@@ -14,3 +14,9 @@ build/
 *.spec
 venv/
 
+
+# PyInstaller
+*.spec
+dist/
+build/
+

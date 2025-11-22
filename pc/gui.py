@@ -26,6 +26,7 @@ class MicRouterApp(ctk.CTk):
         self.audio_thread = None
         self.p = pyaudio.PyAudio()
         self.device_map = {}
+        self.latency_val = 0
 
         # Window Setup
         self.title("MicRouter PC Client")
@@ -46,7 +47,10 @@ class MicRouterApp(ctk.CTk):
         self.status_frame.pack(pady=10, padx=20, fill="x")
         
         self.label_status = ctk.CTkLabel(self.status_frame, text="Status: Idle", text_color="gray")
-        self.label_status.pack(pady=10)
+        self.label_status.pack(pady=(10, 0))
+        
+        self.label_latency = ctk.CTkLabel(self.status_frame, text="Packet Interval: -- ms", text_color="gray", font=("Arial", 12))
+        self.label_latency.pack(pady=(0, 10))
 
         # Device Selection
         self.label_device = ctk.CTkLabel(self, text="Output Device (Virtual Cable/Speakers):")
@@ -71,6 +75,23 @@ class MicRouterApp(ctk.CTk):
         self.textbox_log = ctk.CTkTextbox(self, height=100)
         self.textbox_log.pack(pady=10, padx=20, fill="both", expand=True)
         self.textbox_log.insert("0.0", "Ready. Connect phone via USB.\n")
+
+    def update_latency_loop(self):
+        if self.running:
+            val = int(self.latency_val)
+            # Color coding based on connection quality
+            # ~23ms is ideal for 44.1kHz/1024 chunk size
+            if val < 1:
+                 color = "gray" # initializing
+            elif val < 35:
+                color = "#2cc985" # Green (Good)
+            elif val < 60:
+                color = "orange"  # OK
+            else:
+                color = "#db3e39" # Red (Lag)
+            
+            self.label_latency.configure(text=f"Packet Interval: {val} ms", text_color=color)
+            self.after(250, self.update_latency_loop)
 
     def log(self, message):
         self.textbox_log.insert("end", message + "\n")
@@ -160,11 +181,25 @@ class MicRouterApp(ctk.CTk):
                 self.log("[*] Connected to Phone!")
                 s.settimeout(None)
                 
+                # Start UI update loop
+                self.latency_val = 23.0
+                self.after(100, self.update_latency_loop)
+
+                last_time = time.time()
+                
                 while self.running:
+                    # Receive Audio
                     data = s.recv(self.CHUNK)
                     if not data: break
+
+                    # Latency Calculation (Time between packets)
+                    cur_time = time.time()
+                    dt = (cur_time - last_time) * 1000
+                    last_time = cur_time
+                    # Exponential moving average for smoothness
+                    self.latency_val = (self.latency_val * 0.9) + (dt * 0.1)
                     
-                    # Apply volume gain
+                    # Apply volume gain using Numpy
                     gain = self.slider_vol.get()
                     if gain != 1.0:
                         try:
@@ -174,7 +209,7 @@ class MicRouterApp(ctk.CTk):
                             audio_data = np.clip(audio_data * gain, -32768, 32767)
                             # Convert back to bytes
                             data = audio_data.astype(np.int16).tobytes()
-                        except Exception as e:
+                        except Exception:
                             pass
                     
                     stream.write(data)
@@ -189,7 +224,7 @@ class MicRouterApp(ctk.CTk):
         except Exception as e:
             self.log(f"[!] Audio Device Error: {e}")
         
-        if self.running: # If crashed but wasn not stopped manually
+        if self.running: # If crashed but was not stopped manually
             self.after(0, self.stop_stream)
 
     def on_closing(self):

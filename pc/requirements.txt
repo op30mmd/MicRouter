@@ -1,0 +1,4 @@
+customtkinter
+pyaudio
+numpy
+pyinstaller
