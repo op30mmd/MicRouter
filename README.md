@@ -7,7 +7,7 @@
 - **Background Service:** Android app runs as a Foreground Service (screen off support).
 - **Virtual Mic Support:** Routes audio directly to VB-Audio Cable.
 - **Digital Gain:** Boost volume up to 500% via the PC Client.
-- **Visual Monitoring:** Real-time connection status and latency metrics.
+- **Visual Monitoring:** Real-time connection status.
 
 ## Prerequisites
 
@@ -24,7 +24,11 @@
 3. Open App and grant permissions.
 
 ### 2. PC Client
-1. Navigate to `pc/` folder.
-2. Install dependencies:
+1. Install dependencies:
    ```bash
-   pip install -r requirements.txt
+   pip install -r pc/requirements.txt
+   ```
+2. Run the application:
+   ```bash
+   python pc/gui.py
+   ```
