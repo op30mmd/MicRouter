@@ -1,13 +1,7 @@
 import customtkinter as ctk
-import pyaudio
-import socket
-import threading
-import subprocess
-import sys
 import time
-import struct
-import math
-import numpy as np
+from core import Streamer
+import config
 
 # Appearance Settings
 ctk.set_appearance_mode("Dark")
@@ -18,15 +12,8 @@ class MicRouterApp(ctk.CTk):
         super().__init__()
 
         # Config
-        self.HOST = "127.0.0.1"
-        self.PORT = 6000
-        self.SAMPLE_RATE = 44100
-        self.CHUNK = 1024
-        self.running = False
-        self.audio_thread = None
-        self.p = pyaudio.PyAudio()
+        self.streamer = Streamer(config, self.log, self.update_status)
         self.device_map = {}
-        self.latency_val = 0
 
         # Window Setup
         self.title("MicRouter PC Client")
@@ -38,28 +25,21 @@ class MicRouterApp(ctk.CTk):
         self.scan_audio_devices()
 
     def create_widgets(self):
-        # Title
         self.label_title = ctk.CTkLabel(self, text="Android Mic Router", font=("Roboto Medium", 20))
         self.label_title.pack(pady=20)
 
-        # Status
         self.status_frame = ctk.CTkFrame(self)
         self.status_frame.pack(pady=10, padx=20, fill="x")
         
         self.label_status = ctk.CTkLabel(self.status_frame, text="Status: Idle", text_color="gray")
-        self.label_status.pack(pady=(10, 0))
-        
-        self.label_latency = ctk.CTkLabel(self.status_frame, text="Packet Interval: -- ms", text_color="gray", font=("Arial", 12))
-        self.label_latency.pack(pady=(0, 10))
+        self.label_status.pack(pady=10)
 
-        # Device Selection
         self.label_device = ctk.CTkLabel(self, text="Output Device (Virtual Cable/Speakers):")
         self.label_device.pack(pady=(20, 5))
 
         self.combo_devices = ctk.CTkComboBox(self, values=["Scanning..."], width=300)
         self.combo_devices.pack(pady=5)
 
-        # Volume Slider
         self.label_vol = ctk.CTkLabel(self, text="Digital Gain (Volume Boost):")
         self.label_vol.pack(pady=(20, 5))
         
@@ -67,169 +47,52 @@ class MicRouterApp(ctk.CTk):
         self.slider_vol.set(1.0)
         self.slider_vol.pack(pady=5)
 
-        # Start/Stop Button
         self.btn_toggle = ctk.CTkButton(self, text="START RECEIVING", height=50, command=self.toggle_stream)
         self.btn_toggle.pack(pady=40, padx=20, fill="x")
 
-        # Log
         self.textbox_log = ctk.CTkTextbox(self, height=100)
         self.textbox_log.pack(pady=10, padx=20, fill="both", expand=True)
         self.textbox_log.insert("0.0", "Ready. Connect phone via USB.\n")
-
-    def update_latency_loop(self):
-        if self.running:
-            val = int(self.latency_val)
-            # Color coding based on connection quality
-            # ~23ms is ideal for 44.1kHz/1024 chunk size
-            if val < 1:
-                 color = "gray" # initializing
-            elif val < 35:
-                color = "#2cc985" # Green (Good)
-            elif val < 60:
-                color = "orange"  # OK
-            else:
-                color = "#db3e39" # Red (Lag)
-            
-            self.label_latency.configure(text=f"Packet Interval: {val} ms", text_color=color)
-            self.after(250, self.update_latency_loop)
 
     def log(self, message):
         self.textbox_log.insert("end", message + "\n")
         self.textbox_log.see("end")
 
     def scan_audio_devices(self):
-        self.device_map = {}
-        device_names = []
-        info = self.p.get_host_api_info_by_index(0)
-        numdevices = info.get("deviceCount")
-
-        default_index = 0
-        cable_index = 0
-
-        for i in range(0, numdevices):
-            device_info = self.p.get_device_info_by_host_api_device_index(0, i)
-            if device_info.get("maxOutputChannels") > 0:
-                name = device_info.get("name")
-                self.device_map[name] = i
-                device_names.append(name)
-                
-                if "CABLE Input" in name:
-                    cable_index = i
-                    default_index = i # Prefer cable
-
+        device_names, self.device_map = self.streamer.get_audio_devices()
         self.combo_devices.configure(values=device_names)
         
-        # Select Cable if found, else default
         if device_names:
-            target_name = [k for k, v in self.device_map.items() if v == default_index][0]
-            self.combo_devices.set(target_name)
-
-    def setup_adb(self):
-        self.log("[*] Initializing ADB...")
-        try:
-            subprocess.run(["adb", "forward", f"tcp:{self.PORT}", f"tcp:{self.PORT}"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            self.log("[*] ADB Forwarding active.")
-            return True
-        except Exception as e:
-            self.log("[!] ADB Error. Is phone connected?")
-            self.log(str(e))
-            return False
+            cable_name = next((name for name in device_names if "CABLE Input" in name), device_names[0])
+            self.combo_devices.set(cable_name)
 
     def toggle_stream(self):
-        if not self.running:
+        if not self.streamer.running:
             self.start_stream()
         else:
             self.stop_stream()
 
     def start_stream(self):
-        if not self.setup_adb():
-            return
-
-        self.running = True
-        self.btn_toggle.configure(text="STOP", fg_color="#db3e39", hover_color="#a62e2a")
-        self.label_status.configure(text="Status: Connecting...", text_color="orange")
-        
-        self.audio_thread = threading.Thread(target=self.stream_process)
-        self.audio_thread.start()
+        selected_device = self.combo_devices.get()
+        device_index = self.device_map.get(selected_device)
+        self.streamer.start(device_index, self.slider_vol.get)
 
     def stop_stream(self):
-        self.running = False
-        self.btn_toggle.configure(text="START RECEIVING", fg_color="#1f6aa5", hover_color="#144870")
-        self.label_status.configure(text="Status: Stopped", text_color="gray")
-        self.log("[*] Stopped.")
+        self.streamer.stop()
 
-    def stream_process(self):
-        selected_device_name = self.combo_devices.get()
-        device_index = self.device_map.get(selected_device_name)
-        
-        try:
-            stream = self.p.open(format=pyaudio.paInt16,
-                                 channels=1,
-                                 rate=self.SAMPLE_RATE,
-                                 output=True,
-                                 output_device_index=device_index,
-                                 frames_per_buffer=self.CHUNK)
-
-            self.log(f"[*] Audio Output: {selected_device_name}")
-            
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(5) # Do not hang forever
-            
-            try:
-                s.connect((self.HOST, self.PORT))
-                self.label_status.configure(text="Status: CONNECTED / STREAMING", text_color="#2cc985")
-                self.log("[*] Connected to Phone!")
-                s.settimeout(None)
-                
-                # Start UI update loop
-                self.latency_val = 23.0
-                self.after(100, self.update_latency_loop)
-
-                last_time = time.time()
-                
-                while self.running:
-                    # Receive Audio
-                    data = s.recv(self.CHUNK)
-                    if not data: break
-
-                    # Latency Calculation (Time between packets)
-                    cur_time = time.time()
-                    dt = (cur_time - last_time) * 1000
-                    last_time = cur_time
-                    # Exponential moving average for smoothness
-                    self.latency_val = (self.latency_val * 0.9) + (dt * 0.1)
-                    
-                    # Apply volume gain using Numpy
-                    gain = self.slider_vol.get()
-                    if gain != 1.0:
-                        try:
-                            # Convert raw bytes to int16 array
-                            audio_data = np.frombuffer(data, dtype=np.int16)
-                            # Apply gain and clip to valid range
-                            audio_data = np.clip(audio_data * gain, -32768, 32767)
-                            # Convert back to bytes
-                            data = audio_data.astype(np.int16).tobytes()
-                        except Exception:
-                            pass
-                    
-                    stream.write(data)
-                    
-            except Exception as e:
-                self.log(f"[!] Connection Lost: {e}")
-            finally:
-                s.close()
-                stream.stop_stream()
-                stream.close()
-
-        except Exception as e:
-            self.log(f"[!] Audio Device Error: {e}")
-        
-        if self.running: # If crashed but was not stopped manually
-            self.after(0, self.stop_stream)
+    def update_status(self, status):
+        if status == "connecting":
+            self.btn_toggle.configure(text="STOP", fg_color="#db3e39", hover_color="#a62e2a")
+            self.label_status.configure(text="Status: Connecting...", text_color="orange")
+        elif status == "streaming":
+            self.label_status.configure(text="Status: STREAMING", text_color="#2cc985")
+        elif status == "stopped" or status == "failed":
+            self.btn_toggle.configure(text="START RECEIVING", fg_color="#1f6aa5", hover_color="#144870")
+            self.label_status.configure(text="Status: Stopped", text_color="gray")
 
     def on_closing(self):
-        self.running = False
-        self.p.terminate()
+        self.streamer.stop()
+        self.streamer.cleanup()
         self.destroy()
 
 if __name__ == "__main__":
