@@ -7,7 +7,7 @@ import sys
 import time
 import struct
 import math
-import audioop
+import numpy as np
 
 # Appearance Settings
 ctk.set_appearance_mode("Dark")
@@ -168,10 +168,13 @@ class MicRouterApp(ctk.CTk):
                     gain = self.slider_vol.get()
                     if gain != 1.0:
                         try:
-                            # Mul multiplies the signal by the gain factor
-                            # 2 = width in bytes (16-bit)
-                            data = audioop.mul(data, 2, gain)
-                        except Exception:
+                            # Convert raw bytes to int16 array
+                            audio_data = np.frombuffer(data, dtype=np.int16)
+                            # Apply gain and clip to valid range
+                            audio_data = np.clip(audio_data * gain, -32768, 32767)
+                            # Convert back to bytes
+                            data = audio_data.astype(np.int16).tobytes()
+                        except Exception as e:
                             pass
                     
                     stream.write(data)
