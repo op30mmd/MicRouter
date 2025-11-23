@@ -17,7 +17,7 @@ class WaveformView @JvmOverloads constructor(
     private val paint = Paint()
 
     init {
-        paint.color = Color.WHITE
+        paint.color = Color.BLUE
         paint.strokeWidth = 5f
         paint.isAntiAlias = true
     }

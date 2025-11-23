@@ -135,6 +135,7 @@ class AudioService : Service() {
         sendBroadcast(intent)
 
         val waveformIntent = Intent("com.example.microuter.WAVEFORM_DATA")
+        waveformIntent.setPackage(packageName)
 
         val buffer = ByteArray(bufferSize)
         var frameCount = 0

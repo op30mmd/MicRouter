@@ -10,7 +10,8 @@
     <com.example.microuter.WaveformView
         android:id="@+id/visualizer"
         android:layout_width="match_parent"
-        android:layout_height="200dp" />
+        android:layout_height="200dp"
+        android:background="#000000" />
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/statusText"
