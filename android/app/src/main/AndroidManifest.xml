@@ -17,7 +17,8 @@
         android:roundIcon="@android:drawable/ic_btn_speak_now"
         android:supportsRtl="true"
         android:theme="@style/Theme.MicRouter"
-        tools:targetApi="31">
+        tools:targetApi="31"
+        tools:replace="android:label">
         
         <activity
             android:name=".MainActivity"
