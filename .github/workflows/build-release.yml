@@ -10,9 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -22,7 +22,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
       - name: Upload APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: microuter-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
@@ -31,13 +31,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Package PC client
         run: |
           cd pc
           zip -r ../microuter-pc-client.zip .
       - name: Upload PC client zip
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: microuter-pc-client-zip
           path: microuter-pc-client.zip
@@ -47,15 +47,15 @@ jobs:
     needs: [build-android, package-pc-client]
     steps:
       - name: Download APK
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: microuter-apk
       - name: Download PC client zip
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: microuter-pc-client-zip
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
