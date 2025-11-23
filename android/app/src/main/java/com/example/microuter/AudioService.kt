@@ -137,7 +137,8 @@ class AudioService : Service() {
         val waveformIntent = Intent("com.example.microuter.WAVEFORM_DATA")
 
         val buffer = ByteArray(bufferSize)
-        
+        var frameCount = 0
+
         try {
             val output = DataOutputStream(socket.getOutputStream())
 
@@ -150,8 +151,12 @@ class AudioService : Service() {
                 val read = recorder.read(buffer, 0, buffer.size)
                 if (read > 0) {
                     output.write(buffer, 0, read)
-                    waveformIntent.putExtra("waveform_data", buffer)
-                    sendBroadcast(waveformIntent)
+
+                    frameCount++
+                    if (frameCount % 4 == 0) {
+                        waveformIntent.putExtra("waveform_data", buffer)
+                        sendBroadcast(waveformIntent)
+                    }
                 }
             }
         } catch (e: Exception) {
