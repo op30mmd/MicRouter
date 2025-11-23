@@ -7,7 +7,7 @@
     android:gravity="center"
     android:padding="16dp">
 
-    <com.chibde.visualizer.BarVisualizer
+    <com.example.microuter.WaveformView
         android:id="@+id/visualizer"
         android:layout_width="match_parent"
         android:layout_height="200dp" />

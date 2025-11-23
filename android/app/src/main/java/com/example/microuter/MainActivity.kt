@@ -16,13 +16,13 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.chibde.visualizer.BarVisualizer
+import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
 
     private var isServiceRunning = false
-    private lateinit var visualizer: BarVisualizer
-    private lateinit var audioSessionIdReceiver: BroadcastReceiver
+    private lateinit var visualizer: WaveformView
+    private lateinit var waveformReceiver: BroadcastReceiver
     private lateinit var spinnerSampleRate: Spinner
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,11 +63,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        audioSessionIdReceiver = object : BroadcastReceiver() {
+        waveformReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                val audioSessionId = intent?.getIntExtra("audio_session_id", -1)
-                if (audioSessionId != null && audioSessionId != -1) {
-                    visualizer.setPlayer(audioSessionId)
+                val waveformData = intent?.getByteArrayExtra("waveform_data")
+                if (waveformData != null) {
+                    visualizer.updateData(waveformData)
                 }
             }
         }
@@ -76,15 +76,15 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(audioSessionIdReceiver, IntentFilter("com.example.microuter.AUDIO_SESSION_ID"), Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(waveformReceiver, IntentFilter("com.example.microuter.WAVEFORM_DATA"), Context.RECEIVER_NOT_EXPORTED)
         } else {
-            registerReceiver(audioSessionIdReceiver, IntentFilter("com.example.microuter.AUDIO_SESSION_ID"))
+            registerReceiver(waveformReceiver, IntentFilter("com.example.microuter.WAVEFORM_DATA"))
         }
     }
 
     override fun onPause() {
         super.onPause()
-        unregisterReceiver(audioSessionIdReceiver)
+        unregisterReceiver(waveformReceiver)
     }
 
     override fun onDestroy() {
