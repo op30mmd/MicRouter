@@ -120,6 +120,11 @@ class AudioService : Service() {
             bufferSize
         )
 
+        val audioSessionId = recorder.audioSessionId
+        val intent = Intent("com.example.microuter.AUDIO_SESSION_ID")
+        intent.putExtra("audio_session_id", audioSessionId)
+        sendBroadcast(intent)
+
         val buffer = ByteArray(bufferSize)
         
         try {
@@ -134,11 +139,6 @@ class AudioService : Service() {
                 val read = recorder.read(buffer, 0, buffer.size)
                 if (read > 0) {
                     output.write(buffer, 0, read)
-
-                    // Broadcast the audio data for the visualizer
-                    val intent = Intent("com.example.microuter.AUDIO_DATA")
-                    intent.putExtra("audio_data", buffer)
-                    sendBroadcast(intent)
                 }
             }
         } catch (e: Exception) {

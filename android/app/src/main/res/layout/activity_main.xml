@@ -7,20 +7,16 @@
     android:gravity="center"
     android:padding="16dp">
 
-    <com.gauravk.audiovisualizer.visualizer.BlastVisualizer
+    <com.chibde.visualizer.BarVisualizer
         android:id="@+id/visualizer"
         android:layout_width="match_parent"
-        android:layout_height="200dp"
-        custom:avDensity="0.8"
-        custom:avType="fill"
-        custom:avColor="?attr/colorPrimary"
-        custom:avSpeed="normal"/>
+        android:layout_height="200dp" />
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/statusText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Status: Stopped"
+        android.text="Status: Stopped"
         android:textAppearance="?attr/textAppearanceHeadline6"
         android:layout_marginTop="24dp"
         android:layout_marginBottom="24dp"/>
