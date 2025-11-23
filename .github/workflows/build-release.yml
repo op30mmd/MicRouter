@@ -20,12 +20,12 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: microuter-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
 
   package-pc-client:
     runs-on: ubuntu-latest
@@ -59,7 +59,7 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            app-debug.apk
+            app-release-unsigned.apk
             microuter-pc-client.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
