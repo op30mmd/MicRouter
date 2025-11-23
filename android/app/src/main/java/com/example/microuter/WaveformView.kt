@@ -9,7 +9,6 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.View
-import androidx.core.content.ContextCompat
 
 class WaveformView @JvmOverloads constructor(
     context: Context,
