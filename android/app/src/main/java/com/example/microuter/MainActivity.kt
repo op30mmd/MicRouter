@@ -67,7 +67,7 @@ class MainActivity : AppCompatActivity() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 val audioSessionId = intent?.getIntExtra("audio_session_id", -1)
                 if (audioSessionId != null && audioSessionId != -1) {
-                    visualizer.setAudioSessionId(audioSessionId)
+                    visualizer.setPlayer(audioSessionId)
                 }
             }
         }
