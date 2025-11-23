@@ -16,7 +16,7 @@
         android:label="MicRouter"
         android:roundIcon="@android:drawable/ic_btn_speak_now"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
+        android:theme="@style/Theme.MicRouter"
         tools:targetApi="31">
         
         <activity

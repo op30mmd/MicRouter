@@ -4,6 +4,7 @@ import subprocess
 import threading
 import time
 import numpy as np
+import struct
 
 class Streamer:
     def __init__(self, config, log_callback=None, status_callback=None):
@@ -56,19 +57,6 @@ class Streamer:
         self.p.terminate()
 
     def stream_process(self, device_index, gain_callback):
-        try:
-            stream = self.p.open(format=pyaudio.paInt16,
-                                 channels=1,
-                                 rate=self.config.SAMPLE_RATE,
-                                 output=True,
-                                 output_device_index=device_index,
-                                 frames_per_buffer=self.config.CHUNK)
-        except Exception as e:
-            self.log(f"[!] Audio Device Error: {e}")
-            self.running = False
-            self.status_callback("failed")
-            return
-
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(5)
 
@@ -77,10 +65,21 @@ class Streamer:
             s.connect((self.config.HOST, self.config.PORT))
             self.log("[*] Connected to Phone!")
             s.settimeout(None)
+
+            # Receive sample rate first
+            sample_rate_data = s.recv(4)
+            sample_rate = struct.unpack('!I', sample_rate_data)[0]
+            self.log(f"[*] Received sample rate: {sample_rate}")
+
+            stream = self.p.open(format=pyaudio.paInt16,
+                                 channels=1,
+                                 rate=sample_rate,
+                                 output=True,
+                                 output_device_index=device_index,
+                                 frames_per_buffer=self.config.CHUNK)
             self.status_callback("streaming")
         except Exception as e:
             self.log(f"[!] Connection failed: {e}")
-            stream.close()
             self.running = False
             self.status_callback("failed")
             return
