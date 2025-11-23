@@ -134,6 +134,8 @@ class AudioService : Service() {
         intent.putExtra("audio_session_id", audioSessionId)
         sendBroadcast(intent)
 
+        val waveformIntent = Intent("com.example.microuter.WAVEFORM_DATA")
+
         val buffer = ByteArray(bufferSize)
         
         try {
@@ -148,6 +150,8 @@ class AudioService : Service() {
                 val read = recorder.read(buffer, 0, buffer.size)
                 if (read > 0) {
                     output.write(buffer, 0, read)
+                    waveformIntent.putExtra("waveform_data", buffer)
+                    sendBroadcast(waveformIntent)
                 }
             }
         } catch (e: Exception) {
