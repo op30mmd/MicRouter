@@ -19,6 +19,7 @@ import kotlinx.coroutines.*
 import java.io.DataOutputStream
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketException
 
 class AudioService : Service() {
 
@@ -92,13 +93,21 @@ class AudioService : Service() {
                 Log.d("AudioService", "Server started on port $PORT")
                 
                 while (isStreaming) {
-                    val client = serverSocket?.accept()
-                    Log.d("AudioService", "Client connected")
-                    client?.let { streamAudio(it) }
-                    client?.close()
+                    serverSocket?.accept()?.use { client ->
+                        Log.d("AudioService", "Client connected")
+                        streamAudio(client)
+                    }
+                }
+            } catch (e: SocketException) {
+                if (!isStreaming || serverSocket?.isClosed == true) {
+                    Log.i("AudioService", "Server stopped normally.")
+                } else {
+                    Log.e("AudioService", "Server crashed unexpectedly", e)
                 }
             } catch (e: Exception) {
-                Log.e("AudioService", "Server error", e)
+                Log.e("AudioService", "General server error", e)
+            } finally {
+                stopStreaming()
             }
         }
     }
