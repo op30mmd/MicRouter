@@ -1,17 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:custom="http://schemas.android.com/apk/res-auto"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:gravity="center"
     android:padding="16dp">
 
-    <com.example.microuter.WaveformView
-        android:id="@+id/visualizer"
+    <!-- Wrap the WaveformView in a CardView for rounded corners -->
+    <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="200dp"
-        android:background="#000000" />
+        android:layout_margin="16dp"
+        app:cardBackgroundColor="#1A1A1A"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="8dp">
+
+        <com.example.microuter.WaveformView
+            android:id="@+id/visualizer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </androidx.cardview.widget.CardView>
 
     <com.google.android.material.textview.MaterialTextView
         android:id="@+id/statusText"

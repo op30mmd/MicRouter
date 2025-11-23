@@ -57,54 +57,71 @@ class Streamer:
         self.p.terminate()
 
     def stream_process(self, device_index, gain_callback):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(5)
-
+        s = None
+        stream = None
         try:
             self.status_callback("connecting")
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.log(f"[*] Connecting to {self.config.HOST}:{self.config.PORT}...")
             s.connect((self.config.HOST, self.config.PORT))
             self.log("[*] Connected to Phone!")
-            s.settimeout(None)
 
-            # Receive sample rate first
-            sample_rate_data = s.recv(4)
-            sample_rate = struct.unpack('!I', sample_rate_data)[0]
-            self.log(f"[*] Received sample rate: {sample_rate}")
+            # 1. Receive the Header (4 bytes) safely
+            raw_header = s.recv(4)
+            if len(raw_header) < 4:
+                self.log("[!] Error: Connection closed prematurely by the phone.")
+                self.log("[!] Cause: The selected Sample Rate (e.g., 44100Hz) is likely unsupported.")
+                self.log("[!] Fix: Try selecting a different rate (e.g., 48000Hz or 16000Hz) in the app.")
+                self.running = False
+                self.status_callback("failed")
+                return
 
+            # 2. Unpack using '>I' (Big Endian Unsigned Int) to match Java's DataOutputStream
+            sample_rate = struct.unpack('>I', raw_header)[0]
+            self.log(f"[*] Sample Rate received: {sample_rate} Hz")
+
+            # 3. Setup Audio Player
             stream = self.p.open(format=pyaudio.paInt16,
                                  channels=1,
                                  rate=sample_rate,
                                  output=True,
                                  output_device_index=device_index,
                                  frames_per_buffer=self.config.CHUNK)
-            self.status_callback("streaming")
-        except Exception as e:
-            self.log(f"[!] Connection failed: {e}")
-            self.running = False
-            self.status_callback("failed")
-            return
 
-        while self.running:
-            try:
+            self.status_callback("streaming")
+            self.log("[*] Streaming audio...")
+
+            while self.running:
                 data = s.recv(self.config.CHUNK)
                 if not data:
+                    self.log("[*] Stream ended by phone.")
                     break
 
                 gain = gain_callback()
                 if gain != 1.0:
+                    # Apply digital gain if needed
                     audio_data = np.frombuffer(data, dtype=np.int16)
                     audio_data = np.clip(audio_data * gain, -32768, 32767)
                     data = audio_data.astype(np.int16).tobytes()
 
                 stream.write(data)
-            except Exception as e:
-                self.log(f"[!] Stream error: {e}")
-                break
 
-        s.close()
-        stream.stop_stream()
-        stream.close()
-        self.log("[*] Stream stopped.")
-        if self.running: # If it wasn't stopped manually
-            self.running = False
-            self.status_callback("stopped")
+        except ConnectionRefusedError:
+            self.log("[!] Connection Refused. Is the App server running?")
+            self.log("[!] Tip: Ensure ADB forwarding is active (`adb forward tcp:6000 tcp:6000`)")
+        except socket.timeout:
+            self.log("[!] Connection timed out. Check the phone and ADB connection.")
+        except Exception as e:
+            self.log(f"[!] An error occurred: {e}")
+        finally:
+            if s:
+                s.close()
+            if stream:
+                stream.stop_stream()
+                stream.close()
+
+            self.log("[*] Stream stopped.")
+            # Only update status if it was an unexpected stop
+            if self.running:
+                self.running = False
+                self.status_callback("failed")
