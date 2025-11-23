@@ -75,7 +75,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        registerReceiver(audioSessionIdReceiver, IntentFilter("com.example.microuter.AUDIO_SESSION_ID"))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(audioSessionIdReceiver, IntentFilter("com.example.microuter.AUDIO_SESSION_ID"), Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(audioSessionIdReceiver, IntentFilter("com.example.microuter.AUDIO_SESSION_ID"))
+        }
     }
 
     override fun onPause() {
