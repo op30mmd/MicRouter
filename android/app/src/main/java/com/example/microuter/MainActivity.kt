@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Spinner
@@ -15,13 +16,13 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.gauravk.audiovisualizer.visualizer.BlastVisualizer
+import com.chibde.visualizer.BarVisualizer
 
 class MainActivity : AppCompatActivity() {
 
     private var isServiceRunning = false
-    private lateinit var visualizer: BlastVisualizer
-    private lateinit var audioDataReceiver: BroadcastReceiver
+    private lateinit var visualizer: BarVisualizer
+    private lateinit var audioSessionIdReceiver: BroadcastReceiver
     private lateinit var spinnerSampleRate: Spinner
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,7 +49,7 @@ class MainActivity : AppCompatActivity() {
                 btnToggle.text = "Start Server"
                 statusText.text = "Status: Service Stopped"
                 isServiceRunning = false
-                visualizer.hide()
+                visualizer.visibility = View.GONE
                 spinnerSampleRate.isEnabled = true
             } else {
                 if (checkPermissions()) {
@@ -56,17 +57,17 @@ class MainActivity : AppCompatActivity() {
                     btnToggle.text = "Stop Server"
                     statusText.text = "Status: Service Running (Background Safe)"
                     isServiceRunning = true
-                    visualizer.show()
+                    visualizer.visibility = View.VISIBLE
                     spinnerSampleRate.isEnabled = false
                 }
             }
         }
 
-        audioDataReceiver = object : BroadcastReceiver() {
+        audioSessionIdReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                val audioData = intent?.getByteArrayExtra("audio_data")
-                if (audioData != null) {
-                    visualizer.setRawAudioBytes(audioData)
+                val audioSessionId = intent?.getIntExtra("audio_session_id", -1)
+                if (audioSessionId != null && audioSessionId != -1) {
+                    visualizer.setAudioSessionId(audioSessionId)
                 }
             }
         }
@@ -74,12 +75,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        registerReceiver(audioDataReceiver, IntentFilter("com.example.microuter.AUDIO_DATA"))
+        registerReceiver(audioSessionIdReceiver, IntentFilter("com.example.microuter.AUDIO_SESSION_ID"))
     }
 
     override fun onPause() {
         super.onPause()
-        unregisterReceiver(audioDataReceiver)
+        unregisterReceiver(audioSessionIdReceiver)
     }
 
     override fun onDestroy() {
@@ -87,7 +88,6 @@ class MainActivity : AppCompatActivity() {
         if (isFinishing && isServiceRunning) {
             stopAudioService()
         }
-        visualizer.release()
     }
 
     private fun startAudioService() {
