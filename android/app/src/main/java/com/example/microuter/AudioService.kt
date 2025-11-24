@@ -151,13 +151,14 @@ class AudioService : Service() {
             while (isStreaming && socket.isConnected) {
                 val read = recorder.read(buffer, 0, buffer.size)
                 if (read > 0) {
+                    // 1. Send to PC
                     output.write(buffer, 0, read)
 
-                    frameCount++
-                    if (frameCount % 4 == 0) {
-                        waveformIntent.putExtra("waveform_data", buffer)
-                        sendBroadcast(waveformIntent)
-                    }
+                    // 2. Send to UI (NO THROTTLING)
+                    // We removed the "if (frameCount % 4 == 0)" check here.
+                    // This ensures the UI gets data 15-20 times a second instead of 3.
+                    waveformIntent.putExtra("waveform_data", buffer)
+                    sendBroadcast(waveformIntent)
                 }
             }
         } catch (e: Exception) {
