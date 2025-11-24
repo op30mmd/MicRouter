@@ -9,6 +9,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.View
+import kotlin.math.abs
 
 class WaveformView @JvmOverloads constructor(
     context: Context,
@@ -18,10 +19,13 @@ class WaveformView @JvmOverloads constructor(
 
     private var audioData: ByteArray? = null
     private val paint = Paint()
-    private val barRect = RectF() // Reusable rect to avoid garbage collection
+    private val barRect = RectF()
+
+    // SETTINGS
+    private val TARGET_BARS = 50 // Fixed number of bars (looks cleaner)
+    private val SMOOTHING = 0.5f // Animation smoothing (optional, kept simple for now)
 
     init {
-        // We will set the color/gradient in onSizeChanged or onDraw
         paint.isAntiAlias = true
         paint.style = Paint.Style.FILL
     }
@@ -33,13 +37,13 @@ class WaveformView @JvmOverloads constructor(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        // Create a cool Horizontal Gradient (Cyan -> Purple)
+        // Modern Gradient: Cyan -> Blue -> Purple
         paint.shader = LinearGradient(
             0f, 0f, w.toFloat(), 0f,
             intArrayOf(
-                Color.parseColor("#00E5FF"), // Cyan
-                Color.parseColor("#2979FF"), // Blue
-                Color.parseColor("#D500F9")  // Purple
+                Color.parseColor("#00E5FF"),
+                Color.parseColor("#2979FF"),
+                Color.parseColor("#D500F9")
             ),
             null,
             Shader.TileMode.CLAMP
@@ -54,28 +58,46 @@ class WaveformView @JvmOverloads constructor(
             val height = height.toFloat()
             val centerY = height / 2f
 
-            // SETTINGS FOR THE LOOK
-            val step = 8             // Skip more bytes to make bars wider (less clutter)
-            val density = data.size / step
-            val totalBarSpace = width / density
-            val barWidth = totalBarSpace * 0.6f // Bars take 60% of space, 40% gap
-            var currentX = 0f
+            // 1. Calculate how wide each bar area is
+            val totalBarWidth = width / TARGET_BARS
 
-            for (i in 0 until data.size step step) {
-                // Convert byte to positive int
-                val value = data[i].toInt()
+            // 2. Calculate actual bar width (leave 30% gap)
+            val barWidth = totalBarWidth * 0.7f
+            val gap = totalBarWidth * 0.3f
 
-                // Calculate height (Amplitude)
-                // We divide by 128 to normalize, then multiply by height/2
-                // Added * 1.5f to make the waves a bit taller/more active
-                var magnitude = (value / 128f) * (height / 2f) * 1.5f
+            // 3. How many raw bytes represent ONE bar?
+            // If we have 4000 bytes and want 50 bars, chunk size = 80 bytes
+            val chunkSize = data.size / TARGET_BARS
 
-                // Cap the height so it doesn't go off screen
-                if (magnitude > centerY) magnitude = centerY - 2f
-                // Ensure a minimum height so silent bars are visible (little dots)
-                if (magnitude < 2f) magnitude = 2f
+            var currentX = gap / 2 // Start with a little padding
 
-                // Draw a Rounded Rectangle (Pill shape)
+            // Loop exactly 50 times
+            for (i in 0 until TARGET_BARS) {
+
+                // 4. Calculate Average Amplitude for this chunk
+                // This "smoothes" the noise out
+                var sum = 0L
+                val startIdx = i * chunkSize
+                val endIdx = startIdx + chunkSize
+
+                if (startIdx < data.size) {
+                    for (j in startIdx until endIdx.coerceAtMost(data.size)) {
+                        sum += abs(data[j].toInt())
+                    }
+                }
+
+                // Average value for this chunk (0-128 range mostly)
+                val average = if (chunkSize > 0) sum / chunkSize else 0
+
+                // 5. Scale to screen height
+                // Multiplier 2.5f makes it look more "alive"
+                var magnitude = (average / 64f) * (height / 2f) * 2.5f
+
+                // Constraints
+                if (magnitude > centerY) magnitude = centerY - 10f
+                if (magnitude < 6f) magnitude = 6f // Minimum pill size
+
+                // 6. Draw the Pill
                 barRect.set(
                     currentX,
                     centerY - magnitude,
@@ -83,10 +105,9 @@ class WaveformView @JvmOverloads constructor(
                     centerY + magnitude
                 )
 
-                // The last two arguments (barWidth, barWidth) make the corners fully round
                 canvas.drawRoundRect(barRect, barWidth, barWidth, paint)
 
-                currentX += totalBarSpace
+                currentX += totalBarWidth
             }
         }
     }
