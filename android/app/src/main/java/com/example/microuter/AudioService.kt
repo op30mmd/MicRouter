@@ -115,11 +115,14 @@ class AudioService : Service() {
     private fun streamAudio(socket: Socket) {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
 
-        val bufferSize = AudioRecord.getMinBufferSize(
+        val minBufferSize = AudioRecord.getMinBufferSize(
             sampleRate,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT
         )
+        // Multiply by 2 or 4 to ensure the hardware is happy.
+        // This fixes "Unsupported buffer mode" errors on Samsung devices.
+        val bufferSize = minBufferSize * 2
 
         val recorder = AudioRecord(
             MediaRecorder.AudioSource.MIC,
