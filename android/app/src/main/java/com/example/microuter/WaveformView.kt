@@ -63,7 +63,6 @@ class WaveformView @JvmOverloads constructor(
             var currentX = gap / 2
 
             for (i in 0 until TARGET_BARS) {
-                // Calculate Average Amplitude
                 var sum = 0L
                 val startIdx = i * chunkSize
                 val endIdx = startIdx + chunkSize
@@ -76,26 +75,27 @@ class WaveformView @JvmOverloads constructor(
 
                 val rawAverage = if (chunkSize > 0) sum / chunkSize else 0
 
-                // --- FIX STARTS HERE ---
+                // --- TUNING ADJUSTMENTS ---
 
-                // 1. Noise Gate: Ignore background static (amplitude < 5)
-                val cleanAverage = if (rawAverage < 5) 0 else rawAverage
+                // 1. Stricter Noise Gate (Was 5, Now 10)
+                // Any volume below 10/128 is treated as absolute silence.
+                val cleanAverage = if (rawAverage < 10) 0 else rawAverage
 
-                // 2. Non-Linear Scaling (Squaring):
-                // This squashes low volume (noise) to be tiny,
-                // but keeps high volume (speech/music) tall.
-                val normalized = cleanAverage / 128f // 0.0 to 1.0
-                val curved = normalized * normalized // Squaring it (0.5 becomes 0.25)
+                // 2. Cubic Scaling (Power of 3)
+                // This pushes small numbers WAY down.
+                // Example: 10% volume -> 0.1 * 0.1 * 0.1 = 0.001 (0.1% height)
+                val normalized = cleanAverage / 128f
+                val curved = normalized * normalized * normalized
 
-                // 3. Scale to Height
-                // Multiplier 20f restores the height for loud sounds
-                var magnitude = curved * (height / 2f) * 20f
+                // 3. Adjusted Multiplier (Was 20f, Now 15f)
+                // Since we are cubing, we need a decent multiplier for loud sounds,
+                // but 20 was a bit too aggressive.
+                var magnitude = curved * (height / 2f) * 15f
 
-                // --- FIX ENDS HERE ---
+                // --- END ADJUSTMENTS ---
 
-                // Constraints
                 if (magnitude > centerY) magnitude = centerY - 10f
-                if (magnitude < 4f) magnitude = 4f // Tiny dots for silence
+                if (magnitude < 6f) magnitude = 6f
 
                 barRect.set(
                     currentX,
