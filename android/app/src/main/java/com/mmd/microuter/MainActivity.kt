@@ -9,38 +9,56 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.View
-import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.Spinner
 import android.widget.TextView
+import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.GravityCompat
+import androidx.drawerlayout.widget.DrawerLayout
+import com.google.android.material.navigation.NavigationView
 
 class MainActivity : AppCompatActivity() {
 
     private var isServiceRunning = false
     private lateinit var visualizer: WaveformView
     private lateinit var waveformReceiver: BroadcastReceiver
-    private lateinit var spinnerSampleRate: Spinner
+    private lateinit var drawerLayout: DrawerLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        val btnToggle = findViewById<Button>(R.id.btnToggle)
+        // 1. Setup Toolbar
+        val toolbar = findViewById<Toolbar>(R.id.toolbar)
+        setSupportActionBar(toolbar)
+
+        // 2. Setup Drawer
+        drawerLayout = findViewById(R.id.drawer_layout)
+        val navView = findViewById<NavigationView>(R.id.nav_view)
+
+        val toggle = ActionBarDrawerToggle(
+            this, drawerLayout, toolbar, R.string.open, R.string.close
+        )
+        drawerLayout.addDrawerListener(toggle)
+        toggle.syncState()
+
+        // 3. Handle Menu Clicks
+        navView.setNavigationItemSelectedListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.nav_settings -> {
+                    startActivity(Intent(this, SettingsActivity::class.java))
+                }
+            }
+            drawerLayout.closeDrawer(GravityCompat.START)
+            true
+        }
+
+        val btnToggle = findViewById<Button>(R.id.btnStart)
         val statusText = findViewById<TextView>(R.id.statusText)
         visualizer = findViewById(R.id.visualizer)
-        spinnerSampleRate = findViewById(R.id.spinnerSampleRate)
-
-        ArrayAdapter.createFromResource(
-            this,
-            R.array.sample_rates,
-            android.R.layout.simple_spinner_item
-        ).also { adapter ->
-            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            spinnerSampleRate.adapter = adapter
-        }
 
         btnToggle.setOnClickListener {
             if (isServiceRunning) {
@@ -49,7 +67,6 @@ class MainActivity : AppCompatActivity() {
                 statusText.text = "Status: Service Stopped"
                 isServiceRunning = false
                 visualizer.visibility = View.GONE
-                spinnerSampleRate.isEnabled = true
             } else {
                 if (checkPermissions()) {
                     startAudioService()
@@ -57,7 +74,6 @@ class MainActivity : AppCompatActivity() {
                     statusText.text = "Status: Service Running (Background Safe)"
                     isServiceRunning = true
                     visualizer.visibility = View.VISIBLE
-                    spinnerSampleRate.isEnabled = false
                 }
             }
         }
@@ -95,8 +111,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun startAudioService() {
         val intent = Intent(this, AudioService::class.java)
-        val sampleRate = spinnerSampleRate.selectedItem.toString().split(" ")[0].toInt()
-        intent.putExtra("sample_rate", sampleRate)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
         } else {

@@ -17,6 +17,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
+import androidx.preference.PreferenceManager
 import kotlinx.coroutines.*
 import java.io.DataOutputStream
 import java.net.ServerSocket
@@ -28,8 +29,6 @@ class AudioService : Service() {
     private var serverJob: Job? = null
     private var isStreaming = false
     private var serverSocket: ServerSocket? = null
-    private val PORT = 6000
-    private var sampleRate = 44100
     private val CHANNEL_ID = "MicRouterChannel"
 
     private var suppressor: NoiseSuppressor? = null
@@ -46,17 +45,16 @@ class AudioService : Service() {
         }
 
         if (!isStreaming) {
-            sampleRate = intent?.getIntExtra("sample_rate", 44100) ?: 44100
             startForegroundService()
             startStreaming()
         }
-        
+
         return START_STICKY
     }
 
     private fun startForegroundService() {
         createNotificationChannel()
-        
+
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this, 0, notificationIntent,
@@ -65,7 +63,7 @@ class AudioService : Service() {
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("MicRouter Active")
-            .setContentText("Streaming microphone to PC at $sampleRate Hz...")
+            .setContentText("Streaming microphone to PC...")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -93,10 +91,13 @@ class AudioService : Service() {
     private fun startStreaming() {
         isStreaming = true
         serverJob = CoroutineScope(Dispatchers.IO).launch {
+            val prefs = PreferenceManager.getDefaultSharedPreferences(this@AudioService)
+            val port = prefs.getString("server_port", "6000")?.toIntOrNull() ?: 6000
+
             try {
-                serverSocket = ServerSocket(PORT)
-                Log.d("AudioService", "Server started on port $PORT")
-                
+                serverSocket = ServerSocket(port)
+                Log.d("AudioService", "Server started on port $port")
+
                 while (isStreaming) {
                     serverSocket?.accept()?.use { client ->
                         Log.d("AudioService", "Client connected")
@@ -120,21 +121,23 @@ class AudioService : Service() {
     private fun streamAudio(socket: Socket) {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
 
+        val prefs = PreferenceManager.getDefaultSharedPreferences(this)
+        val sampleRate = prefs.getString("sample_rate", "48000")?.toIntOrNull() ?: 48000
+        val useHwSuppressor = prefs.getBoolean("enable_hw_suppressor", true)
+        val noiseGateThreshold = prefs.getInt("noise_gate_threshold", 100).toDouble()
+
         // 1. CHANGE SOURCE TO MIC
-        // VOICE_COMMUNICATION is causing the "Unsupported buffer mode" crash.
-        // MIC is universally supported and stable.
         val audioSource = MediaRecorder.AudioSource.MIC
         val channelConfig = AudioFormat.CHANNEL_IN_MONO
         val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
         // 2. INCREASE BUFFER SIZE
-        // 48kHz needs a bigger buffer to avoid "underrun" or "blocking" errors.
         val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         val bufferSize = minBufferSize * 4 // Safer than * 2
 
         val recorder = AudioRecord(audioSource, sampleRate, channelConfig, audioFormat, bufferSize)
 
-        if (NoiseSuppressor.isAvailable()) {
+        if (useHwSuppressor && NoiseSuppressor.isAvailable()) {
             try {
                 suppressor = NoiseSuppressor.create(recorder.audioSessionId)
                 if (suppressor != null) {
@@ -149,7 +152,7 @@ class AudioService : Service() {
         }
 
         if (AcousticEchoCanceler.isAvailable()) {
-             try {
+            try {
                 echo = AcousticEchoCanceler.create(recorder.audioSessionId)
                 if (echo != null) {
                     echo?.enabled = true
@@ -172,12 +175,6 @@ class AudioService : Service() {
 
         val buffer = ByteArray(bufferSize)
 
-        // TUNING: Adjust this value to filter more/less noise.
-        // 50 = Safe, removes hiss
-        // 150 = Medium, removes breathing
-        // 300 = Aggressive, might cut off whispers
-        val NOISE_GATE_THRESHOLD = 100.0
-
         try {
             val output = DataOutputStream(socket.getOutputStream())
 
@@ -190,31 +187,22 @@ class AudioService : Service() {
 
                 if (read > 0) {
                     // 1. CALCULATE LOUDNESS (RMS)
-                    // We need to look at the 16-bit PCM samples to know how loud this chunk is
                     var sum = 0.0
-                    // Step by 2 because 16-bit audio takes 2 bytes per sample
                     for (i in 0 until read step 2) {
-                        // Convert 2 bytes -> 1 short (16-bit integer)
                         val low = buffer[i].toInt() and 0xFF
                         val high = buffer[i + 1].toInt() shl 8
                         val sample = (high or low).toShort()
-
                         sum += sample * sample
                     }
                     val rms = Math.sqrt(sum / (read / 2))
 
                     // 2. APPLY NOISE GATE
-                    // If the volume (RMS) is below our threshold, silence the buffer completely.
-                    if (rms < NOISE_GATE_THRESHOLD) {
-                        // Fill the buffer with Zeros (Absolute Silence)
+                    if (rms < noiseGateThreshold) {
                         java.util.Arrays.fill(buffer, 0, read, 0.toByte())
                     }
 
                     // 3. SEND PROCESSED AUDIO
-                    // Send to PC
                     output.write(buffer, 0, read)
-
-                    // Send to Visualizer
                     waveformIntent.putExtra("waveform_data", buffer)
                     sendBroadcast(waveformIntent)
                 }
