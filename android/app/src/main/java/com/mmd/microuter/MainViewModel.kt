@@ -5,12 +5,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
+import androidx.preference.PreferenceManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -20,9 +20,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isServiceRunning = MutableStateFlow(false)
     val isServiceRunning = _isServiceRunning.asStateFlow()
 
+    // Preferences Logic (From chore branch)
+    private val prefs = PreferenceManager.getDefaultSharedPreferences(application)
+    private val _serverPort = MutableStateFlow(prefs.getString("server_port", "6000") ?: "6000")
+    val serverPort = _serverPort.asStateFlow()
+
+    private val preferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
+        if (key == "server_port") {
+            _serverPort.value = sharedPreferences.getString(key, "6000") ?: "6000"
+        }
+    }
+
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.mmd.microuter.WAVEFORM_DATA") {
+            if (intent?.action == "com.example.microuter.WAVEFORM_DATA") {
                 _audioData.value = intent.getByteArrayExtra("waveform_data")
                 _isServiceRunning.value = true
             }
@@ -30,11 +41,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
-        // Register Receiver
-        val filter = IntentFilter("com.mmd.microuter.WAVEFORM_DATA")
+        // Register Broadcast Receiver
+        val filter = IntentFilter("com.example.microuter.WAVEFORM_DATA")
         ContextCompat.registerReceiver(
             application, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
         )
+
+        // Register Preference Listener (From chore branch)
+        prefs.registerOnSharedPreferenceChangeListener(preferenceListener)
     }
 
     fun toggleService(context: Context) {
@@ -42,9 +56,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_isServiceRunning.value) {
             context.stopService(intent)
             _isServiceRunning.value = false
-            _audioData.value = null // Clear visualizer
+            _audioData.value = null
         } else {
-            // In Android 8+, this must be startForegroundService
             ContextCompat.startForegroundService(context, intent)
             _isServiceRunning.value = true
         }
@@ -53,5 +66,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         getApplication<Application>().unregisterReceiver(receiver)
+        prefs.unregisterOnSharedPreferenceChangeListener(preferenceListener)
     }
 }

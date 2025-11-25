@@ -65,8 +65,6 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     // Preferences (for Settings)
-    implementation("androidx.datastore:datastore-preferences:1.0.0")
-
     // Fix "Unresolved reference: PreferenceManager"
     implementation("androidx.preference:preference-ktx:1.2.1")
 

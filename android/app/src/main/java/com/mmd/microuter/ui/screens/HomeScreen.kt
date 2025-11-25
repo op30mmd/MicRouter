@@ -1,10 +1,8 @@
 package com.mmd.microuter.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +24,7 @@ fun HomeScreen(
 ) {
     val audioData by viewModel.audioData.collectAsState()
     val isRunning by viewModel.isServiceRunning.collectAsState()
+    val serverPort by viewModel.serverPort.collectAsState()
     val context = LocalContext.current
 
     Scaffold(
@@ -82,7 +81,7 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text("Port: 6000", color = Color.Gray) // Ideally read from prefs
+            Text("Port: $serverPort", color = Color.Gray)
         }
     }
 }
