@@ -27,7 +27,9 @@ import androidx.preference.PreferenceManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBackClick: () -> Unit) {
+fun SettingsScreen(
+    // REMOVED: onBackClick callback
+) {
     val context = LocalContext.current
     val prefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
     val scrollState = rememberScrollState()
@@ -51,11 +53,7 @@ fun SettingsScreen(onBackClick: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
+                // REMOVED: navigationIcon block (Back Arrow)
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
@@ -101,16 +99,33 @@ fun SettingsScreen(onBackClick: () -> Unit) {
                     // Dropdown Menu for Sample Rate
                     DropdownMenu(
                         expanded = showSampleRateMenu,
-                        onDismissRequest = { showSampleRateMenu = false }
+                        onDismissRequest = { showSampleRateMenu = false },
+                        // 1. Make it rounded (16.dp matches your small elements)
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                        // 2. Use a lighter color than the card so it "pops" out
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        // 3. Add shadow/elevation
+                        tonalElevation = 8.dp,
+                        // 4. Add a small offset so it doesn't cover the text perfectly
+                        offset = androidx.compose.ui.unit.DpOffset(x = 0.dp, y = 8.dp)
                     ) {
                         listOf("16000", "44100", "48000").forEach { rate ->
                             DropdownMenuItem(
-                                text = { Text("$rate Hz") },
+                                text = {
+                                    Text(
+                                        text = "$rate Hz",
+                                        fontWeight = if(sampleRate == rate) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
                                 onClick = {
                                     sampleRate = rate
                                     prefs.edit().putString("sample_rate", rate).apply()
                                     showSampleRateMenu = false
-                                }
+                                },
+                                // Optional: Highlight the selected item
+                                colors = MenuDefaults.itemColors(
+                                    textColor = if(sampleRate == rate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
                             )
                         }
                     }
