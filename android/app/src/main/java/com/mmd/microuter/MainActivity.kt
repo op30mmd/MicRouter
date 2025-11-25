@@ -1,145 +1,77 @@
 package com.mmd.microuter
 
 import android.Manifest
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.view.View
-import android.widget.Button
-import android.widget.TextView
-import androidx.appcompat.app.ActionBarDrawerToggle
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
-import androidx.core.app.ActivityCompat
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
 import androidx.core.content.ContextCompat
-import androidx.core.view.GravityCompat
-import androidx.drawerlayout.widget.DrawerLayout
-import com.google.android.material.navigation.NavigationView
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.mmd.microuter.ui.screens.HomeScreen
+import com.mmd.microuter.ui.screens.SettingsScreen
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : ComponentActivity() {
 
-    private var isServiceRunning = false
-    private lateinit var visualizer: WaveformView
-    private lateinit var waveformReceiver: BroadcastReceiver
-    private lateinit var drawerLayout: DrawerLayout
+    private val viewModel: MainViewModel by viewModels()
+
+    // Modern way to handle permissions
+    private val requestPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+            if (permissions[Manifest.permission.RECORD_AUDIO] != true) {
+                // Handle permission denial gracefully, e.g., show a dialog
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
 
-        // 1. Setup Toolbar
-        val toolbar = findViewById<Toolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
+        checkAndRequestPermissions()
 
-        // 2. Setup Drawer
-        drawerLayout = findViewById(R.id.drawer_layout)
-        val navView = findViewById<NavigationView>(R.id.nav_view)
+        setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                val navController = rememberNavController()
 
-        val toggle = ActionBarDrawerToggle(
-            this, drawerLayout, toolbar, R.string.open, R.string.close
-        )
-        drawerLayout.addDrawerListener(toggle)
-        toggle.syncState()
+                NavHost(navController = navController, startDestination = "home") {
 
-        // 3. Handle Menu Clicks
-        navView.setNavigationItemSelectedListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.nav_settings -> {
-                    startActivity(Intent(this, SettingsActivity::class.java))
-                }
-            }
-            drawerLayout.closeDrawer(GravityCompat.START)
-            true
-        }
+                    composable("home") {
+                        HomeScreen(
+                            viewModel = viewModel,
+                            onNavigateToSettings = { navController.navigate("settings") }
+                        )
+                    }
 
-        val btnStart = findViewById<Button>(R.id.btnStart)
-        val statusText = findViewById<TextView>(R.id.statusText)
-        visualizer = findViewById(R.id.visualizer)
-
-        btnStart.setOnClickListener {
-            if (isServiceRunning) {
-                stopAudioService()
-                btnStart.text = "Start Server"
-                statusText.text = "Status: Service Stopped"
-                isServiceRunning = false
-                visualizer.visibility = View.GONE
-            } else {
-                if (checkPermissions()) {
-                    startAudioService()
-                    btnStart.text = "Stop Server"
-                    statusText.text = "Status: Service Running (Background Safe)"
-                    isServiceRunning = true
-                    visualizer.visibility = View.VISIBLE
-                }
-            }
-        }
-
-        waveformReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                val waveformData = intent?.getByteArrayExtra("waveform_data")
-                if (waveformData != null) {
-                    visualizer.updateData(waveformData)
+                    composable("settings") {
+                        SettingsScreen(
+                            onBackClick = { navController.popBackStack() }
+                        )
+                    }
                 }
             }
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(waveformReceiver, IntentFilter("com.mmd.microuter.WAVEFORM_DATA"), Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(waveformReceiver, IntentFilter("com.mmd.microuter.WAVEFORM_DATA"))
+    private fun checkAndRequestPermissions() {
+        val permissionsToRequest = mutableListOf<String>()
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
         }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        unregisterReceiver(waveformReceiver)
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        if (isFinishing && isServiceRunning) {
-            stopAudioService()
-        }
-    }
-
-    private fun startAudioService() {
-        val intent = Intent(this, AudioService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
-        }
-    }
-
-    private fun stopAudioService() {
-        val intent = Intent(this, AudioService::class.java)
-        intent.action = "STOP"
-        startService(intent)
-    }
-
-    private fun checkPermissions(): Boolean {
-        val permissions = mutableListOf(Manifest.permission.RECORD_AUDIO)
         
-        // Android 13+ requires notification permission
-        if (Build.VERSION.SDK_INT >= 33) {
-            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
 
-        val toRequest = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        if (permissionsToRequest.isNotEmpty()) {
+            requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
         }
-
-        if (toRequest.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, toRequest.toTypedArray(), 1)
-            return false
-        }
-        return true
     }
 }
