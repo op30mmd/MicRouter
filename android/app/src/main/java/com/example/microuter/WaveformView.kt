@@ -21,7 +21,12 @@ class WaveformView @JvmOverloads constructor(
     private val paint = Paint()
     private val barRect = RectF()
 
+    // SETTINGS
     private val TARGET_BARS = 50
+
+    // MEMORY FOR SMOOTHING
+    // We store the current height of every bar here so they don't reset every frame
+    private val barHeights = FloatArray(TARGET_BARS)
 
     init {
         paint.isAntiAlias = true
@@ -30,6 +35,7 @@ class WaveformView @JvmOverloads constructor(
 
     fun updateData(data: ByteArray) {
         this.audioData = data
+        // Trigger a redraw
         invalidate()
     }
 
@@ -38,9 +44,9 @@ class WaveformView @JvmOverloads constructor(
         paint.shader = LinearGradient(
             0f, 0f, w.toFloat(), 0f,
             intArrayOf(
-                Color.parseColor("#00E5FF"),
-                Color.parseColor("#2979FF"),
-                Color.parseColor("#D500F9")
+                Color.parseColor("#00E5FF"), // Cyan
+                Color.parseColor("#2979FF"), // Blue
+                Color.parseColor("#D500F9")  // Purple
             ),
             null,
             Shader.TileMode.CLAMP
@@ -50,6 +56,9 @@ class WaveformView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
+        // If we have data, process it.
+        // Note: Even if audioData is null, we might still want to draw the falling bars (animation),
+        // but for simplicity, we only draw on updates here.
         audioData?.let { data ->
             val width = width.toFloat()
             val height = height.toFloat()
@@ -63,7 +72,7 @@ class WaveformView @JvmOverloads constructor(
             var currentX = gap / 2
 
             for (i in 0 until TARGET_BARS) {
-                // Calculate Average Amplitude
+                // 1. Calculate Raw Target Height
                 var sum = 0L
                 val startIdx = i * chunkSize
                 val endIdx = startIdx + chunkSize
@@ -76,32 +85,38 @@ class WaveformView @JvmOverloads constructor(
 
                 val rawAverage = if (chunkSize > 0) sum / chunkSize else 0
 
-                // --- FIX STARTS HERE ---
+                // Noise Gate & Scaling (from previous steps)
+                val cleanAverage = if (rawAverage < 10) 0 else rawAverage
+                val normalized = cleanAverage / 128f
+                val curved = normalized * normalized * normalized
+                val targetHeight = curved * (height / 2f) * 15f
 
-                // 1. Noise Gate: Ignore background static (amplitude < 5)
-                val cleanAverage = if (rawAverage < 5) 0 else rawAverage
+                // --- SMOOTHING LOGIC ---
 
-                // 2. Non-Linear Scaling (Squaring):
-                // This squashes low volume (noise) to be tiny,
-                // but keeps high volume (speech/music) tall.
-                val normalized = cleanAverage / 128f // 0.0 to 1.0
-                val curved = normalized * normalized // Squaring it (0.5 becomes 0.25)
+                val currentHeight = barHeights[i]
 
-                // 3. Scale to Height
-                // Multiplier 20f restores the height for loud sounds
-                var magnitude = curved * (height / 2f) * 20f
+                if (targetHeight > currentHeight) {
+                    // RISE FAST: Move 60% of the way to the target instantly
+                    // This makes it feel responsive to beats
+                    barHeights[i] += (targetHeight - currentHeight) * 0.6f
+                } else {
+                    // FALL SLOW (Gravity): Move only 10% of the way down
+                    // This creates the smooth "fading" effect
+                    barHeights[i] += (targetHeight - currentHeight) * 0.15f
+                }
 
-                // --- FIX ENDS HERE ---
+                // Use the smoothed value for drawing
+                var drawMagnitude = barHeights[i]
 
                 // Constraints
-                if (magnitude > centerY) magnitude = centerY - 10f
-                if (magnitude < 4f) magnitude = 4f // Tiny dots for silence
+                if (drawMagnitude > centerY) drawMagnitude = centerY - 10f
+                if (drawMagnitude < 6f) drawMagnitude = 6f
 
                 barRect.set(
                     currentX,
-                    centerY - magnitude,
+                    centerY - drawMagnitude,
                     currentX + barWidth,
-                    centerY + magnitude
+                    centerY + drawMagnitude
                 )
 
                 canvas.drawRoundRect(barRect, barWidth, barWidth, paint)

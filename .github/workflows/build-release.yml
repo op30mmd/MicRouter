@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
 
 # permissions are required to push the new tag back to the repo
 permissions:
@@ -58,6 +61,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: [build-android, package-pc-client]
+    if: github.event_name == 'push'
     steps:
       # We need to checkout code to calculate the next version based on git history
       - name: Checkout code
