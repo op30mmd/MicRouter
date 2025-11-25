@@ -1,4 +1,4 @@
-package com.example.microuter
+package com.mmd.microuter
 
 import android.content.Context
 import android.graphics.Canvas
@@ -17,26 +17,99 @@ class WaveformView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    private var audioData: ByteArray? = null
     private val paint = Paint()
     private val barRect = RectF()
 
-    // SETTINGS
     private val TARGET_BARS = 50
-
-    // MEMORY FOR SMOOTHING
-    // We store the current height of every bar here so they don't reset every frame
     private val barHeights = FloatArray(TARGET_BARS)
+    private val targetHeights = FloatArray(TARGET_BARS)
+
+    private var isAnimating = false
 
     init {
         paint.isAntiAlias = true
         paint.style = Paint.Style.FILL
+        // Note: For simple Canvas drawing, default Layer type is often best.
+        // HARDWARE layer is good for Alpha animations, but sometimes uses more GPU memory
+        // for rapid invalidation. We can stick to default here.
     }
 
     fun updateData(data: ByteArray) {
-        this.audioData = data
-        // Trigger a redraw
-        invalidate()
+        // Safety check: Don't calculate if view has no size yet
+        if (height == 0 || data.isEmpty()) return
+
+        calculateTargetHeights(data)
+
+        if (!isAnimating) {
+            isAnimating = true
+            postOnAnimation(animationRunnable)
+        }
+    }
+
+    private fun calculateTargetHeights(data: ByteArray) {
+        val maxHeight = height / 2f
+
+        // 1. Calculate chunk size safely
+        // If data is smaller than 50 bytes, default to 1 byte per chunk
+        val chunkSize = (data.size / TARGET_BARS).coerceAtLeast(1)
+
+        for (i in 0 until TARGET_BARS) {
+            var sum = 0L
+            val startIdx = i * chunkSize
+            val endIdx = (startIdx + chunkSize).coerceAtMost(data.size)
+
+            // Safety check for array bounds
+            if (startIdx < data.size) {
+                for (j in startIdx until endIdx) {
+                    sum += abs(data[j].toInt())
+                }
+            }
+
+            // Calculate Average
+            val rawAverage = if (chunkSize > 0) sum / chunkSize else 0
+
+            // Noise Gate (10/128)
+            val cleanAverage = if (rawAverage < 10) 0 else rawAverage
+
+            // Cubic Scaling (Non-linear)
+            val normalized = cleanAverage / 128f
+            val curved = normalized * normalized * normalized
+
+            targetHeights[i] = curved * maxHeight * 15f
+        }
+    }
+
+    private val animationRunnable = object : Runnable {
+        override fun run() {
+            var needsMoreFrames = false
+
+            for (i in 0 until TARGET_BARS) {
+                val target = targetHeights[i]
+                val current = barHeights[i]
+
+                // If the difference is visible (> 0.5 pixels)
+                if (abs(target - current) > 0.5f) {
+                    needsMoreFrames = true
+
+                    // Rise Fast (0.6), Fall Slow (0.15)
+                    val change = if (target > current) {
+                        (target - current) * 0.6f
+                    } else {
+                        (target - current) * 0.15f
+                    }
+                    barHeights[i] += change
+                }
+            }
+
+            // Draw the new frame
+            invalidate()
+
+            if (needsMoreFrames) {
+                postOnAnimation(this)
+            } else {
+                isAnimating = false
+            }
+        }
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -56,72 +129,38 @@ class WaveformView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // If we have data, process it.
-        // Note: Even if audioData is null, we might still want to draw the falling bars (animation),
-        // but for simplicity, we only draw on updates here.
-        audioData?.let { data ->
-            val width = width.toFloat()
-            val height = height.toFloat()
-            val centerY = height / 2f
+        val width = width.toFloat()
+        val height = height.toFloat()
+        val centerY = height / 2f
 
-            val totalBarWidth = width / TARGET_BARS
-            val barWidth = totalBarWidth * 0.7f
-            val gap = totalBarWidth * 0.3f
+        val totalBarWidth = width / TARGET_BARS
+        val barWidth = totalBarWidth * 0.7f
+        var currentX = (totalBarWidth * 0.3f) / 2
 
-            val chunkSize = data.size / TARGET_BARS
-            var currentX = gap / 2
+        for (i in 0 until TARGET_BARS) {
+            // No math here! Just drawing.
+            var drawMagnitude = barHeights[i]
 
-            for (i in 0 until TARGET_BARS) {
-                // 1. Calculate Raw Target Height
-                var sum = 0L
-                val startIdx = i * chunkSize
-                val endIdx = startIdx + chunkSize
+            // Constraints
+            if (drawMagnitude > centerY) drawMagnitude = centerY - 10f
+            if (drawMagnitude < 6f) drawMagnitude = 6f
 
-                if (startIdx < data.size) {
-                    for (j in startIdx until endIdx.coerceAtMost(data.size)) {
-                        sum += abs(data[j].toInt())
-                    }
-                }
+            barRect.set(
+                currentX,
+                centerY - drawMagnitude,
+                currentX + barWidth,
+                centerY + drawMagnitude
+            )
 
-                val rawAverage = if (chunkSize > 0) sum / chunkSize else 0
-
-                // Noise Gate & Scaling (from previous steps)
-                val cleanAverage = if (rawAverage < 10) 0 else rawAverage
-                val normalized = cleanAverage / 128f
-                val curved = normalized * normalized * normalized
-                val targetHeight = curved * (height / 2f) * 15f
-
-                // --- SMOOTHING LOGIC ---
-
-                val currentHeight = barHeights[i]
-
-                if (targetHeight > currentHeight) {
-                    // RISE FAST: Move 60% of the way to the target instantly
-                    // This makes it feel responsive to beats
-                    barHeights[i] += (targetHeight - currentHeight) * 0.6f
-                } else {
-                    // FALL SLOW (Gravity): Move only 10% of the way down
-                    // This creates the smooth "fading" effect
-                    barHeights[i] += (targetHeight - currentHeight) * 0.15f
-                }
-
-                // Use the smoothed value for drawing
-                var drawMagnitude = barHeights[i]
-
-                // Constraints
-                if (drawMagnitude > centerY) drawMagnitude = centerY - 10f
-                if (drawMagnitude < 6f) drawMagnitude = 6f
-
-                barRect.set(
-                    currentX,
-                    centerY - drawMagnitude,
-                    currentX + barWidth,
-                    centerY + drawMagnitude
-                )
-
-                canvas.drawRoundRect(barRect, barWidth, barWidth, paint)
-                currentX += totalBarWidth
-            }
+            canvas.drawRoundRect(barRect, barWidth, barWidth, paint)
+            currentX += totalBarWidth
         }
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        // Stop animation if the view is destroyed
+        removeCallbacks(animationRunnable)
+        isAnimating = false
     }
 }

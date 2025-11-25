@@ -1,4 +1,4 @@
-package com.example.microuter
+package com.mmd.microuter
 
 import android.Manifest
 import android.app.NotificationChannel
@@ -162,12 +162,12 @@ class AudioService : Service() {
             }
         }
 
-        val intent = Intent("com.example.microuter.AUDIO_SESSION_ID")
+        val intent = Intent("com.mmd.microuter.AUDIO_SESSION_ID")
         intent.setPackage(packageName)
         intent.putExtra("audio_session_id", recorder.audioSessionId)
         sendBroadcast(intent)
 
-        val waveformIntent = Intent("com.example.microuter.WAVEFORM_DATA")
+        val waveformIntent = Intent("com.mmd.microuter.WAVEFORM_DATA")
         waveformIntent.setPackage(packageName)
 
         val buffer = ByteArray(bufferSize)
