@@ -10,6 +10,8 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -29,6 +31,9 @@ class AudioService : Service() {
     private val PORT = 6000
     private var sampleRate = 44100
     private val CHANNEL_ID = "MicRouterChannel"
+
+    private var suppressor: NoiseSuppressor? = null
+    private var echo: AcousticEchoCanceler? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -115,38 +120,61 @@ class AudioService : Service() {
     private fun streamAudio(socket: Socket) {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
 
-        val minBufferSize = AudioRecord.getMinBufferSize(
-            sampleRate,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT
-        )
-        // Multiply by 2 or 4 to ensure the hardware is happy.
-        // This fixes "Unsupported buffer mode" errors on Samsung devices.
-        val bufferSize = minBufferSize * 2
+        // 1. CHANGE SOURCE TO MIC
+        // VOICE_COMMUNICATION is causing the "Unsupported buffer mode" crash.
+        // MIC is universally supported and stable.
+        val audioSource = MediaRecorder.AudioSource.MIC
+        val channelConfig = AudioFormat.CHANNEL_IN_MONO
+        val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
-        val recorder = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            sampleRate,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            bufferSize
-        )
+        // 2. INCREASE BUFFER SIZE
+        // 48kHz needs a bigger buffer to avoid "underrun" or "blocking" errors.
+        val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+        val bufferSize = minBufferSize * 4 // Safer than * 2
 
-        val audioSessionId = recorder.audioSessionId
+        val recorder = AudioRecord(audioSource, sampleRate, channelConfig, audioFormat, bufferSize)
+
+        if (NoiseSuppressor.isAvailable()) {
+            try {
+                suppressor = NoiseSuppressor.create(recorder.audioSessionId)
+                if (suppressor != null) {
+                    suppressor?.enabled = true
+                    Log.i("AudioService", "NoiseSuppressor Enabled!")
+                } else {
+                    Log.e("AudioService", "NoiseSuppressor creation failed.")
+                }
+            } catch (e: Exception) {
+                Log.e("AudioService", "Failed to init NoiseSuppressor: ${e.message}")
+            }
+        }
+
+        if (AcousticEchoCanceler.isAvailable()) {
+             try {
+                echo = AcousticEchoCanceler.create(recorder.audioSessionId)
+                if (echo != null) {
+                    echo?.enabled = true
+                    Log.i("AudioService", "AcousticEchoCanceler Enabled!")
+                } else {
+                    Log.e("AudioService", "AcousticEchoCanceler creation failed.")
+                }
+            } catch (e: Exception) {
+                Log.e("AudioService", "Failed to init AcousticEchoCanceler: ${e.message}")
+            }
+        }
+
         val intent = Intent("com.example.microuter.AUDIO_SESSION_ID")
-        intent.putExtra("audio_session_id", audioSessionId)
+        intent.setPackage(packageName)
+        intent.putExtra("audio_session_id", recorder.audioSessionId)
         sendBroadcast(intent)
 
         val waveformIntent = Intent("com.example.microuter.WAVEFORM_DATA")
         waveformIntent.setPackage(packageName)
 
         val buffer = ByteArray(bufferSize)
-        var frameCount = 0
 
         try {
             val output = DataOutputStream(socket.getOutputStream())
 
-            // Send the sample rate first
             output.writeInt(sampleRate)
 
             recorder.startRecording()
@@ -154,12 +182,7 @@ class AudioService : Service() {
             while (isStreaming && socket.isConnected) {
                 val read = recorder.read(buffer, 0, buffer.size)
                 if (read > 0) {
-                    // 1. Send to PC
                     output.write(buffer, 0, read)
-
-                    // 2. Send to UI (NO THROTTLING)
-                    // We removed the "if (frameCount % 4 == 0)" check here.
-                    // This ensures the UI gets data 15-20 times a second instead of 3.
                     waveformIntent.putExtra("waveform_data", buffer)
                     sendBroadcast(waveformIntent)
                 }
@@ -170,6 +193,8 @@ class AudioService : Service() {
             try {
                 recorder.stop()
                 recorder.release()
+                suppressor?.release()
+                echo?.release()
             } catch (e: Exception) {}
         }
     }
