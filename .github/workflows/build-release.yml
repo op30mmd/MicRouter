@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
 
 # permissions are required to push the new tag back to the repo
 permissions:
