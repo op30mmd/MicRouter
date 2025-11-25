@@ -20,6 +20,12 @@ class SettingsActivity : AppCompatActivity() {
     class SettingsFragment : PreferenceFragmentCompat() {
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.root_preferences, rootKey)
+
+            // PROGRAMMATICALLY SET INPUT TYPE TO NUMBERS
+            val portPref: androidx.preference.EditTextPreference? = findPreference("server_port")
+            portPref?.setOnBindEditTextListener { editText ->
+                editText.inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            }
         }
     }
 }
