@@ -13,7 +13,7 @@
         <ListPreference
             app:key="sample_rate"
             app:title="Sample Rate"
-            app:summary="%s Hz"
+            app:summary="%s"
             app:defaultValue="48000"
             app:entries="@array/sample_rates_labels"
             app:entryValues="@array/sample_rates_values" />

@@ -1,6 +1,28 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.MicRouter" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.MicRouter" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary Brand Colors -->
+        <item name="colorPrimary">#6200EE</item>
+        <item name="colorPrimaryVariant">#3700B3</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+
+        <!-- Standardize Corner Radius (Fixes Issue #5) -->
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.App.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.App.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.App.Large</item>
+    </style>
+
+    <!-- Consistent Shapes -->
+    <style name="ShapeAppearance.App.Small" parent="ShapeAppearance.MaterialComponents.SmallComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">16dp</item>
+    </style>
+    <style name="ShapeAppearance.App.Medium" parent="ShapeAppearance.MaterialComponents.MediumComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">16dp</item>
+    </style>
+    <style name="ShapeAppearance.App.Large" parent="ShapeAppearance.MaterialComponents.LargeComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">24dp</item>
     </style>
 </resources>

@@ -4,21 +4,23 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
 
     <!-- MAIN CONTENT -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="#121212">
+        android:background="?attr/colorSurface"> <!-- Fix #1: Dynamic Background -->
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="#1F1F1F"
-            app:titleTextColor="#FFFFFF" />
+            android:background="?attr/colorSurface"
+            android:elevation="4dp"
+            app:titleTextColor="?attr/colorOnSurface" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -27,13 +29,13 @@
             android:gravity="center"
             android:padding="16dp">
 
+            <!-- CardView now uses dynamic colors automatically -->
             <androidx.cardview.widget.CardView
                 android:layout_width="match_parent"
                 android:layout_height="200dp"
                 android:layout_margin="16dp"
-                app:cardBackgroundColor="#1A1A1A"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="8dp">
+                app:cardCornerRadius="24dp"
+                app:cardElevation="6dp">
 
                 <com.mmd.microuter.WaveformView
                     android:id="@+id/visualizer"
@@ -46,18 +48,21 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Status: Stopped"
-                android:textColor="#FFFFFF"
                 android:textSize="18sp"
                 android:textStyle="bold"
+                android:textColor="?attr/colorOnSurface"
                 android:layout_marginBottom="24dp" />
 
+            <!-- Button gets radius from themes.xml -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnStart"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Start Server"
-                android:padding="12dp"
-                app:cornerRadius="24dp" />
+                android:paddingStart="32dp"
+                android:paddingEnd="32dp"
+                android:paddingTop="12dp"
+                android:paddingBottom="12dp" />
 
             <TextView
                 android:id="@+id/infoText"
@@ -65,16 +70,19 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
                 android:text="Port: 6000"
-                android:textColor="#AAAAAA" />
+                android:textColor="?android:attr/textColorSecondary" />
         </LinearLayout>
     </LinearLayout>
 
     <!-- SIDE MENU -->
+    <!-- Fix #2: Fixed width of 280dp -->
     <com.google.android.material.navigation.NavigationView
         android:id="@+id/nav_view"
         android:layout_width="wrap_content"
+        android:minWidth="240dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
+        android:fitsSystemWindows="true"
         app:menu="@menu/drawer_menu" />
 
 </androidx.drawerlayout.widget.DrawerLayout>

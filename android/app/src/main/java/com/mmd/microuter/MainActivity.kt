@@ -56,21 +56,21 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        val btnToggle = findViewById<Button>(R.id.btnStart)
+        val btnStart = findViewById<Button>(R.id.btnStart)
         val statusText = findViewById<TextView>(R.id.statusText)
         visualizer = findViewById(R.id.visualizer)
 
-        btnToggle.setOnClickListener {
+        btnStart.setOnClickListener {
             if (isServiceRunning) {
                 stopAudioService()
-                btnToggle.text = "Start Server"
+                btnStart.text = "Start Server"
                 statusText.text = "Status: Service Stopped"
                 isServiceRunning = false
                 visualizer.visibility = View.GONE
             } else {
                 if (checkPermissions()) {
                     startAudioService()
-                    btnToggle.text = "Stop Server"
+                    btnStart.text = "Stop Server"
                     statusText.text = "Status: Service Running (Background Safe)"
                     isServiceRunning = true
                     visualizer.visibility = View.VISIBLE
