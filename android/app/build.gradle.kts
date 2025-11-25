@@ -66,4 +66,11 @@ dependencies {
 
     // Preferences (for Settings)
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+
+    // Fix "Unresolved reference: PreferenceManager"
+    implementation("androidx.preference:preference-ktx:1.2.1")
+
+    // Fix "Unresolved reference: Preview" and "tooling"
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    debugImplementation("androidx.compose.ui:ui-tooling")
 }
