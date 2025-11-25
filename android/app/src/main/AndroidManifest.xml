@@ -29,6 +29,14 @@
             </intent-filter>
         </activity>
 
+        <!-- ADD THIS NEW BLOCK HERE -->
+        <activity
+            android:name=".SettingsActivity"
+            android:label="Settings"
+            android:parentActivityName=".MainActivity"
+            android:exported="false" />
+        <!-- END OF NEW BLOCK -->
+
         <service 
             android:name=".AudioService" 
             android:exported="false"
