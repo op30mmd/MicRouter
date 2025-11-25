@@ -135,7 +135,7 @@ fun SettingsScreen(onBackClick: () -> Unit) {
                     }
                 )
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 // Noise Gate Slider
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -215,7 +215,7 @@ fun SectionHeader(text: String) {
 @Composable
 fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
         content = content
