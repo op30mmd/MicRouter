@@ -120,12 +120,17 @@ class AudioService : Service() {
     private fun streamAudio(socket: Socket) {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
 
-        val audioSource = MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        // 1. CHANGE SOURCE TO MIC
+        // VOICE_COMMUNICATION is causing the "Unsupported buffer mode" crash.
+        // MIC is universally supported and stable.
+        val audioSource = MediaRecorder.AudioSource.MIC
         val channelConfig = AudioFormat.CHANNEL_IN_MONO
         val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
+        // 2. INCREASE BUFFER SIZE
+        // 48kHz needs a bigger buffer to avoid "underrun" or "blocking" errors.
         val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
-        val bufferSize = minBufferSize * 2
+        val bufferSize = minBufferSize * 4 // Safer than * 2
 
         val recorder = AudioRecord(audioSource, sampleRate, channelConfig, audioFormat, bufferSize)
 
