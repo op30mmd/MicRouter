@@ -14,14 +14,14 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val prefs = PreferenceManager.getDefaultSharedPreferences(application)
-
     private val _audioData = MutableStateFlow<ByteArray?>(null)
     val audioData = _audioData.asStateFlow()
 
     private val _isServiceRunning = MutableStateFlow(false)
     val isServiceRunning = _isServiceRunning.asStateFlow()
 
+    // Preferences Logic (From chore branch)
+    private val prefs = PreferenceManager.getDefaultSharedPreferences(application)
     private val _serverPort = MutableStateFlow(prefs.getString("server_port", "6000") ?: "6000")
     val serverPort = _serverPort.asStateFlow()
 
@@ -33,7 +33,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.mmd.microuter.WAVEFORM_DATA") {
+            if (intent?.action == "com.example.microuter.WAVEFORM_DATA") {
                 _audioData.value = intent.getByteArrayExtra("waveform_data")
                 _isServiceRunning.value = true
             }
@@ -42,11 +42,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         // Register Broadcast Receiver
-        val filter = IntentFilter("com.mmd.microuter.WAVEFORM_DATA")
+        val filter = IntentFilter("com.example.microuter.WAVEFORM_DATA")
         ContextCompat.registerReceiver(
             application, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
         )
-        // Register Preference Listener
+
+        // Register Preference Listener (From chore branch)
         prefs.registerOnSharedPreferenceChangeListener(preferenceListener)
     }
 
@@ -55,7 +56,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_isServiceRunning.value) {
             context.stopService(intent)
             _isServiceRunning.value = false
-            _audioData.value = null // Clear visualizer
+            _audioData.value = null
         } else {
             ContextCompat.startForegroundService(context, intent)
             _isServiceRunning.value = true
