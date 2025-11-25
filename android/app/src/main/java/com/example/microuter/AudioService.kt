@@ -32,6 +32,9 @@ class AudioService : Service() {
     private var sampleRate = 44100
     private val CHANNEL_ID = "MicRouterChannel"
 
+    private var suppressor: NoiseSuppressor? = null
+    private var echo: AcousticEchoCanceler? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -128,9 +131,9 @@ class AudioService : Service() {
 
         if (NoiseSuppressor.isAvailable()) {
             try {
-                val suppressor = NoiseSuppressor.create(recorder.audioSessionId)
+                suppressor = NoiseSuppressor.create(recorder.audioSessionId)
                 if (suppressor != null) {
-                    suppressor.enabled = true
+                    suppressor?.enabled = true
                     Log.i("AudioService", "NoiseSuppressor Enabled!")
                 } else {
                     Log.e("AudioService", "NoiseSuppressor creation failed.")
@@ -142,9 +145,9 @@ class AudioService : Service() {
 
         if (AcousticEchoCanceler.isAvailable()) {
              try {
-                val echo = AcousticEchoCanceler.create(recorder.audioSessionId)
+                echo = AcousticEchoCanceler.create(recorder.audioSessionId)
                 if (echo != null) {
-                    echo.enabled = true
+                    echo?.enabled = true
                     Log.i("AudioService", "AcousticEchoCanceler Enabled!")
                 } else {
                     Log.e("AudioService", "AcousticEchoCanceler creation failed.")
@@ -185,6 +188,8 @@ class AudioService : Service() {
             try {
                 recorder.stop()
                 recorder.release()
+                suppressor?.release()
+                echo?.release()
             } catch (e: Exception) {}
         }
     }
