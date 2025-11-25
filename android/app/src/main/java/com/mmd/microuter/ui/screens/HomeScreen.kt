@@ -18,64 +18,70 @@ import com.mmd.microuter.ui.components.Waveform
 @Composable
 fun HomeScreen(
     viewModel: MainViewModel
-    // REMOVED: onNavigateToSettings callback is no longer needed here
 ) {
     val audioData by viewModel.audioData.collectAsState()
     val isRunning by viewModel.isServiceRunning.collectAsState()
     val serverPort by viewModel.serverPort.collectAsState()
     val context = LocalContext.current
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("MicRouter") }
-                // REMOVED: The actions block (Gear Icon)
-            )
-        }
-    ) { padding ->
-        Column(
+    // FIX 3: Remove Scaffold here.
+    // We are already inside a Scaffold in MainScreen.
+    // Using another Scaffold doubles the padding and breaks centering.
+    // We just need a Column filling the available space.
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize() // Fill the space provided by NavHost
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center // This guarantees vertical centering
+    ) {
+        // Top Bar Title (Manually added since we removed internal Scaffold)
+        Text(
+            text = "MicRouter",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+
+        Spacer(modifier = Modifier.weight(1f)) // Flexible spacer to push content to center
+
+        // Visualizer Card
+        Card(
             modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .fillMaxWidth()
+                .height(200.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A))
         ) {
-            // ... (Rest of your visualizer and button code remains exactly the same) ...
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A))
-            ) {
-                Waveform(audioData = audioData)
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Text(
-                text = if (isRunning) "Status: Streaming" else "Status: Stopped",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(
-                onClick = { viewModel.toggleService(context) },
-                modifier = Modifier.size(width = 200.dp, height = 56.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isRunning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Text(if (isRunning) "Stop Server" else "Start Server", fontSize = 18.sp)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text("Port: $serverPort", color = Color.Gray)
+            Waveform(audioData = audioData)
         }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text(
+            text = if (isRunning) "Status: Streaming" else "Status: Stopped",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            onClick = { viewModel.toggleService(context) },
+            modifier = Modifier.size(width = 200.dp, height = 56.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isRunning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            )
+        ) {
+            Text(if (isRunning) "Stop Server" else "Start Server", fontSize = 18.sp)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text("Port: $serverPort", color = Color.Gray)
+
+        Spacer(modifier = Modifier.weight(1f)) // Flexible spacer to balance bottom
     }
 }

@@ -1,5 +1,7 @@
 package com.mmd.microuter.ui
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
@@ -21,7 +23,6 @@ import com.mmd.microuter.MainViewModel
 import com.mmd.microuter.ui.screens.HomeScreen
 import com.mmd.microuter.ui.screens.SettingsScreen
 
-// Define our tabs
 sealed class BottomNavItem(val route: String, val label: String, val selectedIcon: ImageVector, val unselectedIcon: ImageVector) {
     object Home : BottomNavItem("home", "Home", Icons.Filled.Mic, Icons.Outlined.Mic)
     object Settings : BottomNavItem("settings", "Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
@@ -56,14 +57,10 @@ fun MainScreen(viewModel: MainViewModel) {
                         selected = isSelected,
                         onClick = {
                             navController.navigate(screen.route) {
-                                // Pop up to the start destination of the graph to
-                                // avoid building up a large stack of destinations
                                 popUpTo(navController.graph.findStartDestination().id) {
                                     saveState = true
                                 }
-                                // Avoid multiple copies of the same destination
                                 launchSingleTop = true
-                                // Restore state when reselecting a previously selected item
                                 restoreState = true
                             }
                         }
@@ -72,13 +69,18 @@ fun MainScreen(viewModel: MainViewModel) {
             }
         }
     ) { innerPadding ->
+        // FIX 1: Remove Animations
+        // Setting transitions to None makes it feel like a real tab switch (Instant)
         NavHost(
             navController = navController,
             startDestination = BottomNavItem.Home.route,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(innerPadding), // Apply padding here handles System Bars + Bottom Nav
+            enterTransition = { EnterTransition.None },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { ExitTransition.None }
         ) {
             composable(BottomNavItem.Home.route) {
-                // Pass the ViewModel to maintain state across tabs
                 HomeScreen(viewModel = viewModel)
             }
             composable(BottomNavItem.Settings.route) {
