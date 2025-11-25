@@ -2,8 +2,6 @@ package com.mmd.microuter.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,8 +17,8 @@ import com.mmd.microuter.ui.components.Waveform
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    viewModel: MainViewModel,
-    onNavigateToSettings: () -> Unit
+    viewModel: MainViewModel
+    // REMOVED: onNavigateToSettings callback is no longer needed here
 ) {
     val audioData by viewModel.audioData.collectAsState()
     val isRunning by viewModel.isServiceRunning.collectAsState()
@@ -30,12 +28,8 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("MicRouter") },
-                actions = {
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                }
+                title = { Text("MicRouter") }
+                // REMOVED: The actions block (Gear Icon)
             )
         }
     ) { padding ->
@@ -47,7 +41,7 @@ fun HomeScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Visualizer Card
+            // ... (Rest of your visualizer and button code remains exactly the same) ...
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
