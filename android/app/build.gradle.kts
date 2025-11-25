@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.microuter"
+    namespace = "com.mmd.microuter"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.microuter"
+        applicationId = "com.mmd.microuter"
         minSdk = 24
         targetSdk = 34
         versionCode = 1

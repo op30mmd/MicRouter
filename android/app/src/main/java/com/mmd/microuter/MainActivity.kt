@@ -1,4 +1,4 @@
-package com.example.microuter
+package com.mmd.microuter
 
 import android.Manifest
 import android.content.BroadcastReceiver
@@ -75,9 +75,9 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(waveformReceiver, IntentFilter("com.example.microuter.WAVEFORM_DATA"), Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(waveformReceiver, IntentFilter("com.mmd.microuter.WAVEFORM_DATA"), Context.RECEIVER_NOT_EXPORTED)
         } else {
-            registerReceiver(waveformReceiver, IntentFilter("com.example.microuter.WAVEFORM_DATA"))
+            registerReceiver(waveformReceiver, IntentFilter("com.mmd.microuter.WAVEFORM_DATA"))
         }
     }
 

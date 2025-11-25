@@ -16,7 +16,7 @@
         app:cardCornerRadius="16dp"
         app:cardElevation="8dp">
 
-        <com.example.microuter.WaveformView
+        <com.mmd.microuter.WaveformView
             android:id="@+id/visualizer"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />

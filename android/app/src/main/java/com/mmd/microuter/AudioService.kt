@@ -1,4 +1,4 @@
-package com.example.microuter
+package com.mmd.microuter
 
 import android.Manifest
 import android.app.NotificationChannel
@@ -162,15 +162,21 @@ class AudioService : Service() {
             }
         }
 
-        val intent = Intent("com.example.microuter.AUDIO_SESSION_ID")
+        val intent = Intent("com.mmd.microuter.AUDIO_SESSION_ID")
         intent.setPackage(packageName)
         intent.putExtra("audio_session_id", recorder.audioSessionId)
         sendBroadcast(intent)
 
-        val waveformIntent = Intent("com.example.microuter.WAVEFORM_DATA")
+        val waveformIntent = Intent("com.mmd.microuter.WAVEFORM_DATA")
         waveformIntent.setPackage(packageName)
 
         val buffer = ByteArray(bufferSize)
+
+        // TUNING: Adjust this value to filter more/less noise.
+        // 50 = Safe, removes hiss
+        // 150 = Medium, removes breathing
+        // 300 = Aggressive, might cut off whispers
+        val NOISE_GATE_THRESHOLD = 100.0
 
         try {
             val output = DataOutputStream(socket.getOutputStream())
@@ -178,17 +184,43 @@ class AudioService : Service() {
             output.writeInt(sampleRate)
 
             recorder.startRecording()
-            
+
             while (isStreaming && socket.isConnected) {
                 val read = recorder.read(buffer, 0, buffer.size)
+
                 if (read > 0) {
+                    // 1. CALCULATE LOUDNESS (RMS)
+                    // We need to look at the 16-bit PCM samples to know how loud this chunk is
+                    var sum = 0.0
+                    // Step by 2 because 16-bit audio takes 2 bytes per sample
+                    for (i in 0 until read step 2) {
+                        // Convert 2 bytes -> 1 short (16-bit integer)
+                        val low = buffer[i].toInt() and 0xFF
+                        val high = buffer[i + 1].toInt() shl 8
+                        val sample = (high or low).toShort()
+
+                        sum += sample * sample
+                    }
+                    val rms = Math.sqrt(sum / (read / 2))
+
+                    // 2. APPLY NOISE GATE
+                    // If the volume (RMS) is below our threshold, silence the buffer completely.
+                    if (rms < NOISE_GATE_THRESHOLD) {
+                        // Fill the buffer with Zeros (Absolute Silence)
+                        java.util.Arrays.fill(buffer, 0, read, 0.toByte())
+                    }
+
+                    // 3. SEND PROCESSED AUDIO
+                    // Send to PC
                     output.write(buffer, 0, read)
+
+                    // Send to Visualizer
                     waveformIntent.putExtra("waveform_data", buffer)
                     sendBroadcast(waveformIntent)
                 }
             }
         } catch (e: Exception) {
-            Log.e("AudioService", "Stream error", e)
+            Log.e("AudioService", "Stream loop error", e)
         } finally {
             try {
                 recorder.stop()
