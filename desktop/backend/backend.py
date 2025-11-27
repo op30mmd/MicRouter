@@ -7,7 +7,7 @@ import pyaudio
 import numpy as np
 import subprocess
 import sys
-import os # Required for killing the process
+import os 
 
 # CONFIGURATION
 FLUTTER_PORT = 5000
@@ -28,7 +28,6 @@ class BackendServer:
         self.device_map = {}
         self.current_gain = 1.0
 
-        # Start the "Zombie Killer" watchdog
         self.start_parent_watchdog()
 
     def start_parent_watchdog(self):
@@ -36,24 +35,19 @@ class BackendServer:
         def watchdog():
             while True:
                 try:
-                    # Read 1 byte from stdin. If empty, parent is dead.
                     if not sys.stdin.read(1):
-                        print("[*] Parent process died. Exiting...")
                         self.cleanup()
-                        os._exit(0) # Force kill
+                        os._exit(0) 
                 except Exception:
                     self.cleanup()
                     os._exit(0)
         
-        # Run in a daemon thread so it doesn't block
         t = threading.Thread(target=watchdog, daemon=True)
         t.start()
-
 
     def start(self):
         print(f"[*] Python Backend listening on {FLUTTER_PORT}...")
         self._scan_devices()
-
         try:
             while True:
                 self.client_socket, addr = self.server_socket.accept()
@@ -63,7 +57,6 @@ class BackendServer:
             self.cleanup()
 
     def _scan_devices(self):
-        """Ported from old get_audio_devices"""
         self.device_map = {}
         try:
             info = self.p.get_host_api_info_by_index(0)
@@ -73,8 +66,7 @@ class BackendServer:
                 if device_info.get("maxOutputChannels") > 0:
                     name = device_info.get("name")
                     self.device_map[name] = i
-        except Exception as e:
-            print(f"[!] Error scanning devices: {e}")
+        except Exception: pass
 
     def send_to_flutter(self, data_dict):
         if self.client_socket:
@@ -90,33 +82,23 @@ class BackendServer:
             try:
                 data = self.client_socket.recv(1024).decode('utf-8')
                 if not data: break
-
                 buffer += data
                 while "\n" in buffer:
                     message, buffer = buffer.split("\n", 1)
                     if message.strip():
                         self.process_command(json.loads(message))
-            except Exception as e:
-                print(f"[!] Connection Error: {e}")
-                break
-        print("[*] UI Disconnected")
+            except Exception: break
         self.client_socket = None
-        # Optional: Stop streaming if UI closes?
-        # self.is_streaming = False
 
     def process_command(self, cmd):
         command = cmd.get('command')
-
+        
         if command == 'get_devices':
             self._scan_devices()
-            device_list = list(self.device_map.keys())
-            self.send_to_flutter({"type": "devices", "payload": device_list})
+            self.send_to_flutter({"type": "devices", "payload": list(self.device_map.keys())})
 
         elif command == 'set_gain':
-            # Dynamic Volume Boost
-            try:
-                self.current_gain = float(cmd.get('value', 1.0))
-                # print(f"[*] Gain set to {self.current_gain}")
+            try: self.current_gain = float(cmd.get('value', 1.0))
             except: pass
 
         elif command == 'start':
@@ -127,21 +109,14 @@ class BackendServer:
                     args=(cmd.get('device_name'), cmd.get('port', 6000))
                 )
                 self.audio_thread.start()
-
+        
         elif command == 'stop':
             self.is_streaming = False
 
     def setup_adb(self, port):
-        self.send_to_flutter({"type": "log", "message": "[*] Initializing ADB..."})
+        self.send_to_flutter({"type": "log", "message": "[*] Setting up ADB..."})
         try:
-            # Ported from old setup_adb
-            subprocess.run(
-                ["adb", "forward", f"tcp:{port}", f"tcp:{port}"],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            self.send_to_flutter({"type": "log", "message": "[*] ADB Forwarding active."})
+            subprocess.run(["adb", "forward", f"tcp:{port}", f"tcp:{port}"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             return True
         except Exception as e:
             self.send_to_flutter({"type": "error", "message": f"ADB Error: {e}"})
@@ -150,34 +125,48 @@ class BackendServer:
     def audio_stream_logic(self, device_name, port):
         sock = None
         stream = None
-
-        # 1. ADB
+        
         if not self.setup_adb(port):
             self.is_streaming = False
             self.send_to_flutter({"type": "status", "payload": "failed"})
             return
 
         try:
-            # 2. Socket Connect
             self.send_to_flutter({"type": "status", "payload": "connecting"})
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(5)
+            
+            # --- CONNECTION RETRY LOOP (THE FIX) ---
+            connected = False
+            attempts = 0
+            max_retries = 20 # Try for ~10 seconds
+            
+            while self.is_streaming and not connected and attempts < max_retries:
+                try:
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(2) # Short timeout for connection attempt
+                    sock.connect(('127.0.0.1', port))
+                    connected = True
+                    sock.settimeout(None) # Disable timeout for streaming
+                except Exception:
+                    attempts += 1
+                    if attempts % 2 == 0: # Only log every other attempt to reduce spam
+                        self.send_to_flutter({"type": "log", "message": f"[*] Waiting for phone... ({attempts}/{max_retries})"})
+                    time.sleep(0.5)
+                    if sock: sock.close()
 
-            self.send_to_flutter({"type": "log", "message": f"[*] Connecting to 127.0.0.1:{port}..."})
-            sock.connect(('127.0.0.1', port))
-            sock.settimeout(None)
+            if not connected:
+                raise Exception("Could not connect to phone. Is the app running?")
 
-            self.send_to_flutter({"type": "log", "message": "[*] Connected! Waiting for header..."})
+            self.send_to_flutter({"type": "log", "message": "[*] Connected! Waiting for stream..."})
 
-            # 3. Header (Big Endian)
+            # --- HANDSHAKE ---
             header = sock.recv(4)
             if len(header) < 4:
-                raise Exception("Connection closed by phone.")
-
+                raise Exception("Phone disconnected during handshake.")
+            
             sample_rate = struct.unpack('>I', header)[0]
             self.send_to_flutter({"type": "log", "message": f"[*] Sample Rate: {sample_rate} Hz"})
 
-            # 4. Audio Device
+            # --- AUDIO DEVICE ---
             device_index = self.device_map.get(device_name)
             if device_index is None:
                 device_index = self.p.get_default_output_device_info()["index"]
@@ -192,54 +181,45 @@ class BackendServer:
             )
 
             self.send_to_flutter({"type": "status", "payload": "running"})
-            self.send_to_flutter({"type": "log", "message": "[*] Streaming audio..."})
 
-            # 5. The Loop (Ported logic)
+            # --- STREAM LOOP ---
             while self.is_streaming:
                 data = sock.recv(1024)
-                if not data:
-                    self.send_to_flutter({"type": "log", "message": "[*] Stream ended."})
+                if not data: 
+                    self.send_to_flutter({"type": "log", "message": "[*] Stream ended by phone."})
                     break
-
-                # --- PROCESS AUDIO (Gain & Visualizer) ---
-
-                # Convert to numpy for math
+                
                 audio_data = np.frombuffer(data, dtype=np.int16)
-
-                # Apply Digital Gain (Volume Boost)
+                
+                # Gain
                 if self.current_gain != 1.0:
                     audio_data = np.clip(audio_data * self.current_gain, -32768, 32767).astype(np.int16)
-                    # Convert back to bytes for PyAudio
                     data = audio_data.tobytes()
 
-                # Calculate Visualizer RMS (from the boosted audio)
+                # Visualizer
                 rms = np.sqrt(np.mean(audio_data.astype(float)**2))
-                normalized_vol = min(rms / 2000, 1.0) # 2000 is a good visual scale
+                normalized_vol = min(rms / 2000, 1.0)
                 self.send_to_flutter({"type": "volume", "value": normalized_vol})
-
-                # Write to hardware
+                
                 stream.write(data)
 
         except Exception as e:
             self.send_to_flutter({"type": "error", "message": str(e)})
         finally:
-            if stream:
+            if stream: 
                 stream.stop_stream()
                 stream.close()
-            if sock:
+            if sock: 
                 sock.close()
-
+            
             self.is_streaming = False
             self.send_to_flutter({"type": "status", "payload": "stopped"})
             self.send_to_flutter({"type": "volume", "value": 0.0})
 
     def cleanup(self):
         self.is_streaming = False
-        if self.audio_thread:
-            self.audio_thread.join(timeout=1)
         self.p.terminate()
         self.server_socket.close()
 
 if __name__ == "__main__":
-    server = BackendServer()
-    server.start()
+    BackendServer().start()
