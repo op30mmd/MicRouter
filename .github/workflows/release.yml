@@ -100,40 +100,33 @@ jobs:
           mkdir rnnoise_build
           cd rnnoise_build
           
-          base_url="https://raw.githubusercontent.com/xiph/rnnoise/master/src"
-          curl -O $base_url/celt_lpc.c
-          curl -O $base_url/celt_lpc.h
-          curl -O $base_url/denoise.c
-          curl -O $base_url/kiss_fft.c
-          curl -O $base_url/kiss_fft.h
-          curl -O $base_url/pitch.c
-          curl -O $base_url/pitch.h
-          curl -O $base_url/rnn.c
-          curl -O $base_url/rnn.h
-          curl -O $base_url/rnn_data.c
-          curl -O $base_url/rnn_data.h
-          curl -O $base_url/tansig_table.h
-          curl -O $base_url/_kiss_fft_guts.h
-          curl -O $base_url/arch.h
-          curl -O $base_url/common.h
-          curl -O $base_url/opus_types.h
+          base_src="https://raw.githubusercontent.com/xiph/rnnoise/master/src"
+          base_inc="https://raw.githubusercontent.com/xiph/rnnoise/master/include"
+          
+          curl -O $base_inc/rnnoise.h
+          curl -O $base_src/celt_lpc.h
+          curl -O $base_src/kiss_fft.h
+          curl -O $base_src/pitch.h
+          curl -O $base_src/rnn.h
+          curl -O $base_src/rnn_data.h
+          curl -O $base_src/tansig_table.h
+          curl -O $base_src/_kiss_fft_guts.h
+          curl -O $base_src/arch.h
+          curl -O $base_src/common.h
+          curl -O $base_src/opus_types.h
+          
+          curl -O $base_src/celt_lpc.c
+          curl -O $base_src/denoise.c
+          curl -O $base_src/kiss_fft.c
+          curl -O $base_src/pitch.c
+          curl -O $base_src/rnn.c
+          curl -O $base_src/rnn_data.c
 
-          cat <<EOF > CMakeLists.txt
-          cmake_minimum_required(VERSION 3.10)
-          project(rnnoise C)
-          if(MSVC)
-            add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-          endif()
-          set(RNNOISE_SOURCES celt_lpc.c denoise.c kiss_fft.c pitch.c rnn.c rnn_data.c)
-          add_library(rnnoise SHARED \${RNNOISE_SOURCES})
-          target_include_directories(rnnoise PRIVATE .)
-          if(WIN32)
-            set_target_properties(rnnoise PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
-          endif()
-          EOF
+          gcc -shared -o rnnoise.dll -O3 -std=c99 \
+              celt_lpc.c denoise.c kiss_fft.c pitch.c rnn.c rnn_data.c \
+              -I. 
 
-          cmake -B build -S .
-          cmake --build build --config Release
+          cd ..
 
       - name: Assemble Release Folder
         run: |
@@ -147,7 +140,7 @@ jobs:
           cp desktop/backend/requirements.txt release_package/backend/
           
           mkdir release_package/backend/libs
-          cp rnnoise_build/build/Release/rnnoise.dll release_package/backend/libs/
+          cp rnnoise_build/rnnoise.dll release_package/backend/libs/
 
       - name: Zip Release
         uses: thedoctor0/zip-release@0.7.6
