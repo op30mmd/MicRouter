@@ -6,6 +6,7 @@ import struct
 import pyaudio
 import numpy as np
 import subprocess
+import os
 import sys
 
 # CONFIGURATION
@@ -28,6 +29,28 @@ class BackendServer:
 
         # STATE
         self.current_gain = 1.0  # Default volume boost
+        
+        # ADD THIS: Start checking if the parent (Flutter) is alive
+        self.start_parent_watchdog()
+
+    def start_parent_watchdog(self):
+        """Kills this process if the parent process (Flutter) closes the stdin pipe."""
+        def watchdog():
+            while True:
+                try:
+                    # Read 1 byte from stdin. If empty, parent is dead.
+                    if not sys.stdin.read(1):
+                        print("[*] Parent process died. Exiting...")
+                        self.cleanup()
+                        os._exit(0) # Force kill
+                except Exception:
+                    self.cleanup()
+                    os._exit(0)
+        
+        # Run in a daemon thread so it doesn't block
+        t = threading.Thread(target=watchdog, daemon=True)
+        t.start()
+
 
     def start(self):
         print(f"[*] Python Backend listening on {FLUTTER_PORT}...")

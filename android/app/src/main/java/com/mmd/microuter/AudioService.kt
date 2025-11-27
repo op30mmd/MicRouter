@@ -140,34 +140,41 @@ class AudioService : Service() {
         val bufferSize = minBufferSize * 4
 
         var recorder: AudioRecord? = null
-        val output = DataOutputStream(socket.getOutputStream())
 
         try {
-            // --- 1. ROBUST HARDWARE INITIALIZATION (RETRY LOGIC) ---
+            // 1. INIT AUDIO RECORD FIRST (Do not write to socket yet)
             var initAttempts = 0
             var initialized = false
-
-            while (initAttempts < 3 && !initialized) {
+            
+            while (initAttempts < 5 && !initialized) { // Increased to 5 attempts
                 try {
                     recorder = AudioRecord(audioSource, sampleRate, channelConfig, audioFormat, bufferSize)
                     if (recorder.state == AudioRecord.STATE_INITIALIZED) {
                         recorder.startRecording()
-                        initialized = true
+                        
+                        // Double check recording state
+                        if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                            initialized = true
+                            Log.i("AudioService", "Microphone started successfully.")
+                        } else {
+                             throw Exception("Recorder failed to start recording")
+                        }
                     } else {
-                        throw Exception("AudioRecord state uninitialized")
+                        throw Exception("Recorder failed to initialize")
                     }
                 } catch (e: Exception) {
-                    Log.w("AudioService", "Mic init failed (Attempt ${initAttempts + 1}/3): ${e.message}")
+                    Log.w("AudioService", "Mic init failed (${initAttempts + 1}/5): ${e.message}")
                     recorder?.release()
                     recorder = null
                     initAttempts++
-                    Thread.sleep(500) // Wait for hardware to reset
+                    // Exponential backoff: 200, 400, 800, 1600...
+                    Thread.sleep(200L * (initAttempts + 1)) 
                 }
             }
 
             if (!initialized || recorder == null) {
-                Log.e("AudioService", "Critical: Failed to initialize mic after 3 attempts.")
-                return // Exit cleanly, closing socket
+                Log.e("AudioService", "Critical: Mic hardware unavailable. Closing socket.")
+                return // This will close the socket, forcing the PC to retry the connection
             }
 
             // --- 2. EFFECTS SETUP ---
@@ -184,7 +191,7 @@ class AudioService : Service() {
                     echo?.enabled = true
                 } catch (e: Exception) { Log.e("AudioService", "AEC Error: ${e.message}") }
             }
-
+            
             // --- 3. UI HANDSHAKE ---
             val sessionIntent = Intent("com.mmd.microuter.AUDIO_SESSION_ID")
             sessionIntent.setPackage(packageName)
@@ -194,12 +201,13 @@ class AudioService : Service() {
             val waveformIntent = Intent("com.mmd.microuter.WAVEFORM_DATA")
             waveformIntent.setPackage(packageName)
 
-            // Send Header to PC (Big Endian)
-            output.writeInt(sampleRate)
+            // 2. NOW SEND HANDSHAKE (Only after hardware is ready)
+            val output = DataOutputStream(socket.getOutputStream())
+            output.writeInt(sampleRate) // PC receives this and starts playing
 
             val buffer = ByteArray(bufferSize)
 
-            // --- 4. STREAMING LOOP ---
+            // 3. STREAMING LOOP
             while (isStreaming.get() && socket.isConnected && !socket.isClosed) {
                 val read = recorder.read(buffer, 0, buffer.size)
 
