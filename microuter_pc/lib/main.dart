@@ -29,21 +29,28 @@ class BackendController extends ChangeNotifier {
   void _startEmbeddedBackend() async {
     String exePath = Platform.resolvedExecutable;
     String dir = File(exePath).parent.path;
-    String backendExe = p.join(dir, 'microuter_engine.exe');
+    String scriptPath = p.join(dir, 'backend', 'backend.py');
 
-    logs.add("Looking for backend at: $backendExe");
+    logs.add("Looking for script at: $scriptPath");
     notifyListeners();
 
-    if (await File(backendExe).exists()) {
+    if (await File(scriptPath).exists()) {
       try {
-        _pythonProcess = await Process.start(backendExe, []);
-        logs.add("Backend started successfully.");
-        // _pythonProcess!.stdout.transform(utf8.decoder).listen((data) => print("PY: $data"));
+        _pythonProcess = await Process.start('python', [scriptPath]);
+        logs.add("Python backend started.");
+
+        _pythonProcess!.stderr.transform(utf8.decoder).listen((data) {
+             print("PY_ERR: $data");
+             logs.add("PY_ERR: $data");
+             notifyListeners();
+        });
+
       } catch (e) {
-        logs.add("Failed to launch backend: $e");
+        logs.add("Failed to launch python: $e");
+        logs.add("Check if Python is installed and in PATH.");
       }
     } else {
-      logs.add("Backend EXE not found. (Dev mode?)");
+      logs.add("backend.py not found.");
     }
 
     await Future.delayed(const Duration(seconds: 1));
