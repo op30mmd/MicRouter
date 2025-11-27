@@ -2,6 +2,12 @@
 
 **MicRouter** is a low-latency tool that transforms your Android device into a high-quality microphone for your Windows PC. It routes audio from your phone's microphone to your PC via a USB connection with minimal latency.
 
+## Prebuilt Releases
+
+For most users, it is recommended to download the latest prebuilt binaries from the **[GitHub Releases](https://github.com/op30mmd/MicRouter/releases)** page. This is the easiest way to get started with MicRouter.
+
+The project is configured with a CI/CD workflow that automatically builds and releases new versions of the Android and Windows applications whenever changes are pushed to the `master` branch.
+
 ## Architecture Overview
 
 The MicRouter system consists of three main components that work together:

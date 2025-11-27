@@ -56,23 +56,23 @@ jobs:
         run: flutter config --enable-windows-desktop
 
       - name: Repair Windows Scaffolding
-        working-directory: ./microuter_pc
+        working-directory: desktop/frontend
         run: flutter create --platforms=windows .
 
       - name: Build Flutter Windows App
-        working-directory: ./microuter_pc
+        working-directory: desktop/frontend
         run: flutter build windows --release
 
       - name: Assemble Release Folder
         run: |
           mkdir release_package
 
-          cp -r microuter_pc/build/windows/x64/runner/Release/* release_package/
+          cp -r desktop/frontend/build/windows/x64/runner/Release/* release_package/
 
           mkdir release_package/backend
-          cp pc/backend.py release_package/backend/
-          cp pc/config.py release_package/backend/
-          cp pc/requirements.txt release_package/backend/
+          cp desktop/backend/backend.py release_package/backend/
+          cp desktop/backend/config.py release_package/backend/
+          cp desktop/backend/requirements.txt release_package/backend/
 
       - name: Zip Release
         uses: thedoctor0/zip-release@0.7.6
