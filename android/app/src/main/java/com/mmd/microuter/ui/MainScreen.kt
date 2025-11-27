@@ -22,6 +22,8 @@ import androidx.navigation.compose.rememberNavController
 import com.mmd.microuter.MainViewModel
 import com.mmd.microuter.ui.screens.HomeScreen
 import com.mmd.microuter.ui.screens.SettingsScreen
+import com.mmd.microuter.ui.screens.DebugScreen
+
 
 sealed class BottomNavItem(val route: String, val label: String, val selectedIcon: ImageVector, val unselectedIcon: ImageVector) {
     object Home : BottomNavItem("home", "Home", Icons.Filled.Mic, Icons.Outlined.Mic)
@@ -84,7 +86,14 @@ fun MainScreen(viewModel: MainViewModel) {
                 HomeScreen(viewModel = viewModel)
             }
             composable(BottomNavItem.Settings.route) {
-                SettingsScreen()
+                SettingsScreen(
+                    onOpenDebug = { navController.navigate("debug") } // Pass a callback
+                )
+            }
+            
+            // NEW ROUTE
+            composable("debug") {
+                DebugScreen(onBackClick = { navController.popBackStack() })
             }
         }
     }
