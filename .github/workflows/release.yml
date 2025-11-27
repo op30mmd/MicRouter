@@ -83,7 +83,6 @@ jobs:
           channel: 'stable'
           cache: true
 
-
       - name: Enable Windows Desktop
         run: flutter config --enable-windows-desktop
 
@@ -95,16 +94,54 @@ jobs:
         working-directory: desktop/frontend
         run: flutter build windows --release
 
+      - name: Compile RNNoise DLL
+        shell: bash
+        run: |
+          mkdir rnnoise_build
+          cd rnnoise_build
+          
+          base_src="https://raw.githubusercontent.com/xiph/rnnoise/master/src"
+          base_inc="https://raw.githubusercontent.com/xiph/rnnoise/master/include"
+          
+          curl -O $base_inc/rnnoise.h
+          curl -O $base_src/celt_lpc.h
+          curl -O $base_src/kiss_fft.h
+          curl -O $base_src/pitch.h
+          curl -O $base_src/rnn.h
+          curl -O $base_src/rnn_data.h
+          curl -O $base_src/tansig_table.h
+          curl -O $base_src/_kiss_fft_guts.h
+          curl -O $base_src/arch.h
+          curl -O $base_src/common.h
+          curl -O $base_src/opus_types.h
+          
+          curl -O $base_src/celt_lpc.c
+          curl -O $base_src/denoise.c
+          curl -O $base_src/kiss_fft.c
+          curl -O $base_src/pitch.c
+          curl -O $base_src/rnn.c
+          curl -O $base_src/rnn_data.c
+
+          gcc -shared -o rnnoise.dll -O3 -std=c99 \
+              -D_USE_MATH_DEFINES \
+              celt_lpc.c denoise.c kiss_fft.c pitch.c rnn.c rnn_data.c \
+              -I. 
+
+          cd ..
+
       - name: Assemble Release Folder
         run: |
           mkdir release_package
-
+          
           cp -r desktop/frontend/build/windows/x64/runner/Release/* release_package/
-
+          
           mkdir release_package/backend
           cp desktop/backend/backend.py release_package/backend/
-          cp desktop/backend/config.py release_package/backend/
+          cp desktop/backend/denoiser.py release_package/backend/
           cp desktop/backend/requirements.txt release_package/backend/
+          
+          mkdir release_package/backend/libs
+          cp rnnoise_build/rnnoise.dll release_package/backend/libs/
 
       - name: Zip Release
         uses: thedoctor0/zip-release@0.7.6
