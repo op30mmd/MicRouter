@@ -33,7 +33,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.example.microuter.WAVEFORM_DATA") {
+            if (intent?.action == "com.mmd.microuter.WAVEFORM_DATA") {
                 _audioData.value = intent.getByteArrayExtra("waveform_data")
                 _isServiceRunning.value = true
             }
@@ -42,7 +42,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         // Register Broadcast Receiver
-        val filter = IntentFilter("com.example.microuter.WAVEFORM_DATA")
+        val filter = IntentFilter("com.mmd.microuter.WAVEFORM_DATA")
         ContextCompat.registerReceiver(
             application, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
         )
