@@ -32,10 +32,15 @@ class BackendController extends ChangeNotifier {
       notifyListeners();
       sendCommand("get_devices");
 
-      _socket!.transform(utf8.decoder).listen((data) {
+      _socket!.cast<List<int>>().transform(utf8.decoder).listen((data) {
+        // Handle split packets
         for (var line in data.split('\n')) {
           if (line.trim().isNotEmpty) {
-            _handleMessage(jsonDecode(line));
+            try {
+                _handleMessage(jsonDecode(line));
+            } catch (e) {
+                print("JSON Parse Error: $e");
+            }
           }
         }
       }, onDone: () {
