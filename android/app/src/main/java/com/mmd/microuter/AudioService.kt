@@ -30,7 +30,6 @@ import kotlin.math.sqrt
 class AudioService : Service() {
 
     private var serverJob: Job? = null
-    // AtomicBoolean prevents race conditions between UI stops and background loops
     private var isStreaming = AtomicBoolean(false)
     private var serverSocket: ServerSocket? = null
     private val CHANNEL_ID = "MicRouterChannel"
@@ -103,28 +102,23 @@ class AudioService : Service() {
 
                 while (isStreaming.get()) {
                     try {
-                        // Accept blocks until PC connects
                         val client = serverSocket?.accept()
                         if (client != null) {
                             Log.d("AudioService", "Client connected")
 
-                            // BLOCKING CALL: Runs until PC disconnects
+                            // Give previous hardware lock a moment to release fully
+                            delay(500)
+
                             client.use { streamAudio(it) }
 
-                            Log.d("AudioService", "Client disconnected. Cleaning up...")
-
-                            // *** CRITICAL FIX FOR SAMSUNG DEVICES ***
-                            // We MUST give the hardware time to fully release the Mic
-                            // before trying to open it again for the next connection.
-                            delay(1000)
+                            Log.d("AudioService", "Client disconnected")
                         }
                     } catch (e: SocketException) {
-                        // Expected when serverSocket is closed manually
                         if (isStreaming.get()) Log.e("AudioService", "Socket error", e)
                     }
                 }
             } catch (e: Exception) {
-                Log.e("AudioService", "Server loop crashed", e)
+                Log.e("AudioService", "Server crashed", e)
             } finally {
                 stopStreaming()
             }
@@ -139,38 +133,59 @@ class AudioService : Service() {
         val useHwSuppressor = prefs.getBoolean("enable_hw_suppressor", true)
         val noiseGateThreshold = prefs.getInt("noise_gate_threshold", 100).toDouble()
 
-        // 1. USE MIC SOURCE (Fixes "Unsupported buffer mode")
         val audioSource = MediaRecorder.AudioSource.MIC
         val channelConfig = AudioFormat.CHANNEL_IN_MONO
         val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-
-        // 2. LARGE BUFFER (Fixes Underruns/Blocking)
         val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         val bufferSize = minBufferSize * 4
 
         var recorder: AudioRecord? = null
+        val output = DataOutputStream(socket.getOutputStream())
 
         try {
-            recorder = AudioRecord(audioSource, sampleRate, channelConfig, audioFormat, bufferSize)
+            // --- 1. ROBUST HARDWARE INITIALIZATION (RETRY LOGIC) ---
+            var initAttempts = 0
+            var initialized = false
 
-            // Hardware Noise Suppressor
+            while (initAttempts < 3 && !initialized) {
+                try {
+                    recorder = AudioRecord(audioSource, sampleRate, channelConfig, audioFormat, bufferSize)
+                    if (recorder.state == AudioRecord.STATE_INITIALIZED) {
+                        recorder.startRecording()
+                        initialized = true
+                    } else {
+                        throw Exception("AudioRecord state uninitialized")
+                    }
+                } catch (e: Exception) {
+                    Log.w("AudioService", "Mic init failed (Attempt ${initAttempts + 1}/3): ${e.message}")
+                    recorder?.release()
+                    recorder = null
+                    initAttempts++
+                    Thread.sleep(500) // Wait for hardware to reset
+                }
+            }
+
+            if (!initialized || recorder == null) {
+                Log.e("AudioService", "Critical: Failed to initialize mic after 3 attempts.")
+                return // Exit cleanly, closing socket
+            }
+
+            // --- 2. EFFECTS SETUP ---
             if (useHwSuppressor && NoiseSuppressor.isAvailable()) {
                 try {
                     suppressor = NoiseSuppressor.create(recorder.audioSessionId)
                     suppressor?.enabled = true
-                    Log.i("AudioService", "NoiseSuppressor ON")
-                } catch (e: Exception) { Log.e("AudioService", "NS Failed: ${e.message}") }
+                } catch (e: Exception) { Log.e("AudioService", "NS Error: ${e.message}") }
             }
 
-            // Echo Canceler
             if (AcousticEchoCanceler.isAvailable()) {
                 try {
                     echo = AcousticEchoCanceler.create(recorder.audioSessionId)
                     echo?.enabled = true
-                } catch (e: Exception) { Log.e("AudioService", "AEC Failed: ${e.message}") }
+                } catch (e: Exception) { Log.e("AudioService", "AEC Error: ${e.message}") }
             }
 
-            // Setup Visualizer Intents
+            // --- 3. UI HANDSHAKE ---
             val sessionIntent = Intent("com.mmd.microuter.AUDIO_SESSION_ID")
             sessionIntent.setPackage(packageName)
             sessionIntent.putExtra("audio_session_id", recorder.audioSessionId)
@@ -179,15 +194,12 @@ class AudioService : Service() {
             val waveformIntent = Intent("com.mmd.microuter.WAVEFORM_DATA")
             waveformIntent.setPackage(packageName)
 
-            val buffer = ByteArray(bufferSize)
-            val output = DataOutputStream(socket.getOutputStream())
-
-            // Handshake
+            // Send Header to PC (Big Endian)
             output.writeInt(sampleRate)
 
-            recorder.startRecording()
+            val buffer = ByteArray(bufferSize)
 
-            // 3. STREAMING LOOP
+            // --- 4. STREAMING LOOP ---
             while (isStreaming.get() && socket.isConnected && !socket.isClosed) {
                 val read = recorder.read(buffer, 0, buffer.size)
 
@@ -200,34 +212,42 @@ class AudioService : Service() {
                     }
                     val rms = sqrt(sum / (read / 2))
 
-                    // Software Noise Gate
+                    // Noise Gate
                     if (rms < noiseGateThreshold) {
                         Arrays.fill(buffer, 0, read, 0.toByte())
                     }
 
-                    // Send to PC
+                    // Write to PC (This throws Exception if PC disconnects, breaking the loop)
                     output.write(buffer, 0, read)
 
-                    // Send to Visualizer (Fixing the glitchy graph)
-                    // We only send the VALID bytes, not the full garbage buffer
+                    // Visualizer
                     val validData = buffer.copyOfRange(0, read)
                     waveformIntent.putExtra("waveform_data", validData)
                     sendBroadcast(waveformIntent)
+                } else if (read < 0) {
+                    Log.w("AudioService", "AudioRecord read error: $read")
+                    Thread.sleep(10) // Prevent tight error loop
                 }
             }
         } catch (e: Exception) {
-            Log.e("AudioService", "Streaming interrupted: ${e.message}")
+            // This is normal when the PC disconnects or Stop is pressed
+            Log.i("AudioService", "Streaming ended: ${e.message}")
         } finally {
-            // 4. CLEANUP
+            // --- 5. CLEANUP ---
             try {
-                if (recorder?.state == AudioRecord.STATE_INITIALIZED) {
-                    recorder.stop()
+                if (recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    recorder?.stop()
                 }
                 recorder?.release()
+                recorder = null // Help GC
+
                 suppressor?.release()
+                suppressor = null
+
                 echo?.release()
+                echo = null
             } catch (e: Exception) {
-                Log.e("AudioService", "Cleanup failed", e)
+                Log.e("AudioService", "Cleanup error", e)
             }
         }
     }
