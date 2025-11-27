@@ -70,7 +70,7 @@ dependencies {
 
     // --- COMPOSE DEPENDENCIES ---
     // BOM 2024.06.00 maps to Material3 1.2.1
-    val composeBom = platform("androidx.compose:compose-bom:2024.06.00")
+    val composeBom = platform("androidx.compose:compose-bom:2024.11.00")
     implementation(composeBom)
 
     implementation("androidx.compose.ui:ui")
@@ -79,7 +79,7 @@ dependencies {
 
     implementation("androidx.compose.material3:material3") {
         version {
-            strictly("1.2.1")
+            strictly("1.3.0")
         }
     }
 
