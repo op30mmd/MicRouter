@@ -28,6 +28,12 @@ jobs:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           echo $ANDROID_KEYSTORE_BASE64 | base64 --decode > android/app/release-key.jks
+      - name: 🔍 Inspect Material 3 Dependency
+        run: |
+          cd android
+          chmod +x gradlew
+          # This command asks Gradle: "Why did you pick this version of Material3?"
+          ./gradlew app:dependencyInsight --configuration releaseCompileClasspath --dependency androidx.compose.material3:material3
       - name: Build with Gradle
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
