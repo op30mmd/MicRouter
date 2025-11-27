@@ -123,6 +123,7 @@ jobs:
           curl -O $base_src/rnn_data.c
 
           gcc -shared -o rnnoise.dll -O3 -std=c99 \
+              -D_USE_MATH_DEFINES \
               celt_lpc.c denoise.c kiss_fft.c pitch.c rnn.c rnn_data.c \
               -I. 
 
