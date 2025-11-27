@@ -22,6 +22,8 @@ import androidx.navigation.compose.rememberNavController
 import com.mmd.microuter.MainViewModel
 import com.mmd.microuter.ui.screens.HomeScreen
 import com.mmd.microuter.ui.screens.SettingsScreen
+import com.mmd.microuter.ui.screens.DebugScreen
+
 
 sealed class BottomNavItem(val route: String, val label: String, val selectedIcon: ImageVector, val unselectedIcon: ImageVector) {
     object Home : BottomNavItem("home", "Home", Icons.Filled.Mic, Icons.Outlined.Mic)
