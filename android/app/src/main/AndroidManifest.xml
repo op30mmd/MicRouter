@@ -22,20 +22,13 @@
         
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/Theme.MicRouter">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
-        <!-- ADD THIS NEW BLOCK HERE -->
-        <activity
-            android:name=".SettingsActivity"
-            android:label="Settings"
-            android:parentActivityName=".MainActivity"
-            android:exported="false" />
-        <!-- END OF NEW BLOCK -->
 
         <service 
             android:name=".AudioService" 
