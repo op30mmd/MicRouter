@@ -1,22 +1,75 @@
-# Android
-.gradle/
+# ========================
+# General & OS
+# ========================
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
+*.swp
+
+# ========================
+# IDE & Editors
+# ========================
 .idea/
-build/
-app/build/
-local.properties
+.vscode/
 *.iml
+*.ipr
+*.iws
 
-# Python
+# ========================
+# Android (Root & App)
+# ========================
+# Gradle Cache & Build Files
+.gradle/
+build/
+android/.gradle/
+android/build/
+android/app/build/
+
+# Local Configuration (Secrets/SDK Paths)
+local.properties
+android/local.properties
+
+# Native Build Caches
+.cxx/
+.externalNativeBuild/
+
+# Specific logs seen in your tree
+android/build_output.log
+android/app/build_output.log
+
+# Garbage/Backup folder seen in your tree (Safe to ignore)
+android/app.src/
+
+# ========================
+# Python (pc folder)
+# ========================
 __pycache__/
-*.pyc
-dist/
-build/
+*.py[cod]
+*$py.class
+*.manifest
 *.spec
+
+# Virtual Environments (Good practice)
 venv/
+env/
+.env
 
+# ========================
+# Flutter (microuter_pc)
+# ========================
+microuter_pc/build/
+microuter_pc/.dart_tool/
+microuter_pc/.pub/
+microuter_pc/.flutter-plugins
+microuter_pc/.flutter-plugins-dependencies
 
-# PyInstaller
-*.spec
-dist/
-build/
+# Windows specific Flutter ephemeral files
+microuter_pc/windows/flutter/ephemeral/
+microuter_pc/windows/flutter/generated_plugin_registrant.cc
+microuter_pc/windows/flutter/generated_plugin_registrant.h
+microuter_pc/windows/runner/resources/app_icon.ico
 
+# Exceptions (Keep these if they exist)
+!microuter_pc/windows/runner/runner.exe.manifest
