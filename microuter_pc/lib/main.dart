@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   runApp(
@@ -12,17 +13,48 @@ void main() {
   );
 }
 
-// --- 1. STATE MANAGEMENT (CONTROLLER) ---
 class BackendController extends ChangeNotifier {
   Socket? _socket;
-  String status = "Disconnected";
+  Process? _pythonProcess;
+  String status = "Initializing...";
   double currentVolume = 0.0;
   List<String> logs = [];
   List<String> devices = [];
   String? selectedDevice;
 
   BackendController() {
+    _startEmbeddedBackend();
+  }
+
+  void _startEmbeddedBackend() async {
+    String exePath = Platform.resolvedExecutable;
+    String dir = File(exePath).parent.path;
+    String backendExe = p.join(dir, 'microuter_engine.exe');
+
+    logs.add("Looking for backend at: $backendExe");
+    notifyListeners();
+
+    if (await File(backendExe).exists()) {
+      try {
+        _pythonProcess = await Process.start(backendExe, []);
+        logs.add("Backend started successfully.");
+        // _pythonProcess!.stdout.transform(utf8.decoder).listen((data) => print("PY: $data"));
+      } catch (e) {
+        logs.add("Failed to launch backend: $e");
+      }
+    } else {
+      logs.add("Backend EXE not found. (Dev mode?)");
+    }
+
+    await Future.delayed(const Duration(seconds: 1));
     connectToPython();
+  }
+
+  @override
+  void dispose() {
+    _socket?.destroy();
+    _pythonProcess?.kill();
+    super.dispose();
   }
 
   void connectToPython() async {
@@ -32,29 +64,30 @@ class BackendController extends ChangeNotifier {
       notifyListeners();
       sendCommand("get_devices");
 
-      _socket!.cast<List<int>>().transform(utf8.decoder).listen((data) {
-        // Handle split packets
-        for (var line in data.split('\n')) {
-          if (line.trim().isNotEmpty) {
-            try {
+      _socket!.cast<List<int>>().transform(utf8.decoder).listen(
+        (data) {
+          for (var line in data.split('\n')) {
+            if (line.trim().isNotEmpty) {
+              try {
                 _handleMessage(jsonDecode(line));
-            } catch (e) {
-                print("JSON Parse Error: $e");
+              } catch (e) {
+                // Ignore partial JSON chunks
+              }
             }
           }
-        }
-      }, onDone: () {
-        status = "Backend Disconnected";
-        logs.add("Info: Backend process was terminated.");
-        notifyListeners();
-      }, onError: (e) {
-        status = "Connection Error";
-        logs.add("Error: ${e.toString()}");
-        notifyListeners();
-      });
+        },
+        onDone: () {
+          status = "Backend Disconnected";
+          notifyListeners();
+        },
+        onError: (e) {
+          status = "Connection Error";
+          notifyListeners();
+        },
+      );
     } catch (e) {
-      status = "Backend Not Found";
-      logs.add("Error: Ensure python backend is running!");
+      status = "Waiting for Backend...";
+      Future.delayed(const Duration(seconds: 2), connectToPython);
       notifyListeners();
     }
   }
@@ -109,7 +142,7 @@ class BackendController extends ChangeNotifier {
   }
 }
 
-// --- 2. UI LAYOUT ---
+// --- UI LAYOUT (No changes needed here) ---
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -133,7 +166,6 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       body: Row(
         children: [
-          // Sidebar
           NavigationRail(
             selectedIndex: 0,
             destinations: const [
@@ -144,14 +176,12 @@ class HomeScreen extends StatelessWidget {
           ),
           const VerticalDivider(thickness: 1, width: 1),
 
-          // Main Content
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(32.0),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Visualizer Bar
                   Container(
                     height: 50,
                     width: 300,
@@ -175,7 +205,6 @@ class HomeScreen extends StatelessWidget {
                   Text(controller.status.toUpperCase(), style: Theme.of(context).textTheme.headlineMedium),
                   const SizedBox(height: 20),
 
-                  // Device Dropdown
                   DropdownButton<String>(
                     value: controller.selectedDevice,
                     hint: const Text("Select an Output Device"),
@@ -209,7 +238,6 @@ class HomeScreen extends StatelessWidget {
                   ),
 
                   const SizedBox(height: 40),
-                  // Logs Console
                   Expanded(
                     child: Container(
                       width: double.infinity,

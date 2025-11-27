@@ -28,7 +28,7 @@ jobs:
 
       - name: Compile Python Backend to EXE
         run: |
-          pyinstaller --onefile --name microuter_engine pc/backend.py
+          pyinstaller --onefile --noconsole --name microuter_engine pc/backend.py
 
       # --- 2. BUILD FLUTTER UI ---
       - name: Install Flutter
