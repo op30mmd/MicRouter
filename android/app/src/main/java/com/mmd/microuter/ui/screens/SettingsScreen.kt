@@ -90,7 +90,7 @@ fun SettingsScreen(
 
             SettingsCard {
                 // Sample Rate Setting
-                Box {
+                Box(modifier = Modifier.fillMaxWidth()) {
                     SettingsItem(
                         icon = Icons.Outlined.GraphicEq,
                         title = "Sample Rate",
@@ -98,37 +98,39 @@ fun SettingsScreen(
                         onClick = { showSampleRateMenu = true }
                     )
 
-                    // Dropdown Menu for Sample Rate
-                    DropdownMenu(
-                        expanded = showSampleRateMenu,
-                        onDismissRequest = { showSampleRateMenu = false },
-                        // 1. Make it rounded (16.dp matches your small elements)
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-                        // 2. Use a lighter color than the card so it "pops" out
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        // 3. Add shadow/elevation
-                        tonalElevation = 8.dp,
-                        // 4. Add a small offset so it doesn't cover the text perfectly
-                        offset = androidx.compose.ui.unit.DpOffset(x = 0.dp, y = 8.dp)
+                    // FIX: Align the menu to the Right (End) side of the row
+                    Box(modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 16.dp) // Align with the text margin
                     ) {
-                        listOf("16000", "44100", "48000").forEach { rate ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = "$rate Hz",
-                                        fontWeight = if(sampleRate == rate) FontWeight.Bold else FontWeight.Normal
+                        DropdownMenu(
+                            expanded = showSampleRateMenu,
+                            onDismissRequest = { showSampleRateMenu = false },
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                            // FIX: Use 'surface' color to contrast against the 'surfaceContainerHigh' card
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 8.dp,
+                            // FIX: Adjust offset to position it nicely near the value text
+                            offset = androidx.compose.ui.unit.DpOffset(x = 0.dp, y = 0.dp)
+                        ) {
+                            listOf("16000", "44100", "48000").forEach { rate ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "$rate Hz",
+                                            fontWeight = if (sampleRate == rate) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    onClick = {
+                                        sampleRate = rate
+                                        prefs.edit().putString("sample_rate", rate).apply()
+                                        showSampleRateMenu = false
+                                    },
+                                    colors = MenuDefaults.itemColors(
+                                        textColor = if (sampleRate == rate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                     )
-                                },
-                                onClick = {
-                                    sampleRate = rate
-                                    prefs.edit().putString("sample_rate", rate).apply()
-                                    showSampleRateMenu = false
-                                },
-                                // Optional: Highlight the selected item
-                                colors = MenuDefaults.itemColors(
-                                    textColor = if(sampleRate == rate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                 )
-                            )
+                            }
                         }
                     }
                 }
