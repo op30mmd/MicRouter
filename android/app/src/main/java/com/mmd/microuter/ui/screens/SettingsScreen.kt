@@ -30,7 +30,7 @@ import androidx.preference.PreferenceManager
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    // REMOVED: onBackClick callback
+    onOpenDebug: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
@@ -186,6 +186,20 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            SectionHeader("Developer")
+            SettingsCard {
+                SettingsItem(
+                    icon = Icons.Outlined.BugReport,
+                    title = "View Debug Console",
+                    subtitle = "Inspect logs and errors",
+                    onClick = onOpenDebug
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 

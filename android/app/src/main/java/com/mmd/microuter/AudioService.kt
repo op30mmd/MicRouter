@@ -18,6 +18,7 @@ import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.preference.PreferenceManager
+import com.mmd.microuter.utils.AppLogger
 import kotlinx.coroutines.*
 import java.io.DataOutputStream
 import java.net.ServerSocket
@@ -98,27 +99,27 @@ class AudioService : Service() {
 
             try {
                 serverSocket = ServerSocket(port)
-                Log.d("AudioService", "Server started on port $port")
+                AppLogger.i("AudioService", "Server started on port $port")
 
                 while (isStreaming.get()) {
                     try {
                         val client = serverSocket?.accept()
                         if (client != null) {
-                            Log.d("AudioService", "Client connected")
+                            AppLogger.i("AudioService", "Client connected")
 
                             // Give previous hardware lock a moment to release fully
                             delay(500)
 
                             client.use { streamAudio(it) }
 
-                            Log.d("AudioService", "Client disconnected")
+                            AppLogger.i("AudioService", "Client disconnected")
                         }
                     } catch (e: SocketException) {
-                        if (isStreaming.get()) Log.e("AudioService", "Socket error", e)
+                        if (isStreaming.get()) AppLogger.e("AudioService", "Socket error", e)
                     }
                 }
             } catch (e: Exception) {
-                Log.e("AudioService", "Server crashed", e)
+                AppLogger.e("AudioService", "Server crashed", e)
             } finally {
                 stopStreaming()
             }
@@ -163,7 +164,7 @@ class AudioService : Service() {
                         throw Exception("Recorder failed to initialize")
                     }
                 } catch (e: Exception) {
-                    Log.w("AudioService", "Mic init failed (${initAttempts + 1}/5): ${e.message}")
+                    AppLogger.w("AudioService", "Mic init failed (Attempt ${initAttempts + 1}/3): ${e.message}")
                     recorder?.release()
                     recorder = null
                     initAttempts++
@@ -173,8 +174,8 @@ class AudioService : Service() {
             }
 
             if (!initialized || recorder == null) {
-                Log.e("AudioService", "Critical: Mic hardware unavailable. Closing socket.")
-                return // This will close the socket, forcing the PC to retry the connection
+                AppLogger.e("AudioService", "Critical: Failed to initialize mic after 3 attempts.")
+                return // Exit cleanly, closing socket
             }
 
             // --- 2. EFFECTS SETUP ---
@@ -182,14 +183,14 @@ class AudioService : Service() {
                 try {
                     suppressor = NoiseSuppressor.create(recorder.audioSessionId)
                     suppressor?.enabled = true
-                } catch (e: Exception) { Log.e("AudioService", "NS Error: ${e.message}") }
+                } catch (e: Exception) { AppLogger.e("AudioService", "NS Error: ${e.message}") }
             }
 
             if (AcousticEchoCanceler.isAvailable()) {
                 try {
                     echo = AcousticEchoCanceler.create(recorder.audioSessionId)
                     echo?.enabled = true
-                } catch (e: Exception) { Log.e("AudioService", "AEC Error: ${e.message}") }
+                } catch (e: Exception) { AppLogger.e("AudioService", "AEC Error: ${e.message}") }
             }
             
             // --- 3. UI HANDSHAKE ---
@@ -233,13 +234,13 @@ class AudioService : Service() {
                     waveformIntent.putExtra("waveform_data", validData)
                     sendBroadcast(waveformIntent)
                 } else if (read < 0) {
-                    Log.w("AudioService", "AudioRecord read error: $read")
+                    AppLogger.w("AudioService", "AudioRecord read error: $read")
                     Thread.sleep(10) // Prevent tight error loop
                 }
             }
         } catch (e: Exception) {
             // This is normal when the PC disconnects or Stop is pressed
-            Log.i("AudioService", "Streaming ended: ${e.message}")
+            AppLogger.i("AudioService", "Streaming ended: ${e.message}")
         } finally {
             // --- 5. CLEANUP ---
             try {
@@ -255,7 +256,7 @@ class AudioService : Service() {
                 echo?.release()
                 echo = null
             } catch (e: Exception) {
-                Log.e("AudioService", "Cleanup error", e)
+                AppLogger.e("AudioService", "Cleanup error", e)
             }
         }
     }
