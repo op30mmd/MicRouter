@@ -12,7 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.DropdownMenu as M3DropdownMenu
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -99,7 +99,7 @@ fun SettingsScreen(
                     )
 
                     // Dropdown Menu for Sample Rate
-                    M3DropdownMenu(
+                    DropdownMenu(
                         expanded = showSampleRateMenu,
                         onDismissRequest = { showSampleRateMenu = false },
                         // 1. Make it rounded (16.dp matches your small elements)
