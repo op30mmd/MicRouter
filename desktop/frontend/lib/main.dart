@@ -19,6 +19,7 @@ class BackendController extends ChangeNotifier {
   String status = "Initializing...";
   double currentVolume = 0.0; // Visualizer value (0.0 - 1.0)
   double gainValue = 1.0;     // Slider value (1.0 - 5.0)
+  bool isAiEnabled = false;
 
   List<String> logs = [];
   List<String> devices = [];
@@ -153,6 +154,12 @@ class BackendController extends ChangeNotifier {
     sendCommand('set_gain', {'value': val});
     notifyListeners();
   }
+
+  void toggleAi(bool value) {
+    isAiEnabled = value;
+    sendCommand("toggle_rnnoise", {"value": value});
+    notifyListeners();
+  }
 }
 
 // --- UI LAYOUT ---
@@ -284,9 +291,36 @@ class HomeScreen extends StatelessWidget {
                     ],
                   ),
 
-                  const SizedBox(height: 30),
+                  // ... Gain Slider ...
+                  
+                  const SizedBox(height: 20),
 
-                  // 3. Action Buttons
+                  // AI TOGGLE ROW
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black26,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.auto_awesome, color: Colors.amber),
+                        const SizedBox(width: 10),
+                        const Text("AI Noise Cancellation"),
+                        const SizedBox(width: 10),
+                        Switch(
+                          value: controller.isAiEnabled,
+                          onChanged: (val) => controller.toggleAi(val),
+                          activeColor: Colors.amber,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+                  // ... Start/Stop Buttons ...
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [

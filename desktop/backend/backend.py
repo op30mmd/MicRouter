@@ -8,6 +8,7 @@ import numpy as np
 import subprocess
 import sys
 import os 
+from denoiser import RNNoise
 
 # CONFIGURATION
 FLUTTER_PORT = 5000
@@ -27,6 +28,8 @@ class BackendServer:
         self.p = pyaudio.PyAudio()
         self.device_map = {}
         self.current_gain = 1.0
+        self.rnnoise = None
+        self.use_rnnoise = False
 
         self.start_parent_watchdog()
 
@@ -100,9 +103,24 @@ class BackendServer:
         elif command == 'set_gain':
             try: self.current_gain = float(cmd.get('value', 1.0))
             except: pass
+            
+        elif command == 'toggle_rnnoise':
+            self.use_rnnoise = cmd.get('value', False)
+            if self.use_rnnoise and self.rnnoise is None:
+                try:
+                    self.rnnoise = RNNoise()
+                    self.send_to_flutter({"type": "log", "message": "[*] AI Denoising Enabled"})
+                except Exception as e:
+                    self.send_to_flutter({"type": "error", "message": f"RNNoise Error: {e}"})
+                    self.use_rnnoise = False
+            elif not self.use_rnnoise:
+                self.send_to_flutter({"type": "log", "message": "[*] AI Denoising Disabled"})
 
         elif command == 'start':
             if not self.is_streaming:
+                if self.use_rnnoise and self.rnnoise is None:
+                    try: self.rnnoise = RNNoise()
+                    except: pass
                 self.is_streaming = True
                 self.audio_thread = threading.Thread(
                     target=self.audio_stream_logic,
@@ -185,23 +203,40 @@ class BackendServer:
             # --- STREAM LOOP ---
             while self.is_streaming:
                 data = sock.recv(1024)
-                if not data: 
-                    self.send_to_flutter({"type": "log", "message": "[*] Stream ended by phone."})
-                    break
+                if not data: break
                 
-                audio_data = np.frombuffer(data, dtype=np.int16)
+                # --- RNNOISE INTEGRATION ---
+                final_data = data
+                
+                if self.use_rnnoise and self.rnnoise:
+                    try:
+                        # Feed raw bytes, get clean bytes back
+                        processed = self.rnnoise.process(data)
+                        if processed:
+                            final_data = processed
+                        else:
+                            # RNNoise buffers data internally until it has enough for a frame.
+                            # If it returns empty, we must NOT write to speakers yet to avoid glitches.
+                            continue 
+                    except Exception as e:
+                        print(f"RNNoise fail: {e}")
+
+                # --- VISUALIZER & PLAYBACK ---
+                # Use final_data for playback, but raw 'data' for visualizer?
+                # Actually, visualizing the CLEAN audio is better:
+                audio_data = np.frombuffer(final_data, dtype=np.int16)
                 
                 # Gain
                 if self.current_gain != 1.0:
                     audio_data = np.clip(audio_data * self.current_gain, -32768, 32767).astype(np.int16)
-                    data = audio_data.tobytes()
+                    final_data = audio_data.tobytes()
 
-                # Visualizer
-                rms = np.sqrt(np.mean(audio_data.astype(float)**2))
-                normalized_vol = min(rms / 2000, 1.0)
-                self.send_to_flutter({"type": "volume", "value": normalized_vol})
+                # Send volume to Flutter
+                if len(audio_data) > 0:
+                    rms = np.sqrt(np.mean(audio_data.astype(float)**2))
+                    self.send_to_flutter({"type": "volume", "value": min(rms / 2000, 1.0)})
                 
-                stream.write(data)
+                stream.write(final_data)
 
         except Exception as e:
             self.send_to_flutter({"type": "error", "message": str(e)})
