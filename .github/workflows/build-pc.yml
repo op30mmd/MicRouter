@@ -1,0 +1,61 @@
+name: Build PC Client (Windows)
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # --- 1. BUILD FLUTTER UI ---
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Repair Windows Scaffolding
+        working-directory: ./microuter_pc
+        run: flutter create --platforms=windows .
+
+      - name: Build Flutter Windows App
+        working-directory: ./microuter_pc
+        run: flutter build windows --release
+
+      # --- 2. ASSEMBLE RELEASE FOLDER ---
+      - name: Assemble Release Folder
+        run: |
+          mkdir release_package
+
+          # 1. Copy Flutter Build (The main app)
+          cp -r microuter_pc/build/windows/x64/runner/Release/* release_package/
+
+          # 2. Copy Raw Python Files
+          mkdir release_package/backend
+          cp pc/backend.py release_package/backend/
+          cp pc/config.py release_package/backend/
+          cp pc/requirements.txt release_package/backend/
+
+      - name: Zip Release
+        uses: thedoctor0/zip-release@0.7.6
+        with:
+          type: 'zip'
+          filename: 'MicRouter-PC-Windows.zip'
+          directory: 'release_package'
+
+      # --- 3. UPLOAD ARTIFACT ---
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MicRouter-PC-Windows
+          path: release_package/MicRouter-PC-Windows.zip
