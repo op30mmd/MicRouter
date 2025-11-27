@@ -23,14 +23,14 @@ import java.io.DataOutputStream
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.Arrays
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.sqrt
 
 class AudioService : Service() {
 
     private var serverJob: Job? = null
-    // AtomicBoolean is safer for flags accessed by multiple threads
+    // AtomicBoolean prevents race conditions between UI stops and background loops
     private var isStreaming = AtomicBoolean(false)
     private var serverSocket: ServerSocket? = null
     private val CHANNEL_ID = "MicRouterChannel"
@@ -67,8 +67,8 @@ class AudioService : Service() {
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("MicRouter Active")
-            .setContentText("Streaming microphone to PC...")
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now) // Consider adding your own ic_mic icon
+            .setContentText("Listening for PC connection...")
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop",
@@ -85,12 +85,9 @@ class AudioService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val serviceChannel = NotificationChannel(
-                CHANNEL_ID,
-                "MicRouter Service Channel",
-                NotificationManager.IMPORTANCE_LOW
+                CHANNEL_ID, "MicRouter Service", NotificationManager.IMPORTANCE_LOW
             )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(serviceChannel)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(serviceChannel)
         }
     }
 
@@ -105,21 +102,29 @@ class AudioService : Service() {
                 Log.d("AudioService", "Server started on port $port")
 
                 while (isStreaming.get()) {
-                    // accept() blocks until a client connects
                     try {
+                        // Accept blocks until PC connects
                         val client = serverSocket?.accept()
                         if (client != null) {
                             Log.d("AudioService", "Client connected")
-                            // streamAudio blocks until client disconnects
+
+                            // BLOCKING CALL: Runs until PC disconnects
                             client.use { streamAudio(it) }
+
+                            Log.d("AudioService", "Client disconnected. Cleaning up...")
+
+                            // *** CRITICAL FIX FOR SAMSUNG DEVICES ***
+                            // We MUST give the hardware time to fully release the Mic
+                            // before trying to open it again for the next connection.
+                            delay(1000)
                         }
                     } catch (e: SocketException) {
-                        // Socket closed naturally during stopStreaming
-                        if (isStreaming.get()) Log.e("AudioService", "Accept failed", e)
+                        // Expected when serverSocket is closed manually
+                        if (isStreaming.get()) Log.e("AudioService", "Socket error", e)
                     }
                 }
             } catch (e: Exception) {
-                Log.e("AudioService", "General server error", e)
+                Log.e("AudioService", "Server loop crashed", e)
             } finally {
                 stopStreaming()
             }
@@ -134,96 +139,95 @@ class AudioService : Service() {
         val useHwSuppressor = prefs.getBoolean("enable_hw_suppressor", true)
         val noiseGateThreshold = prefs.getInt("noise_gate_threshold", 100).toDouble()
 
-        // 1. CHANGE SOURCE TO MIC (Most stable)
+        // 1. USE MIC SOURCE (Fixes "Unsupported buffer mode")
         val audioSource = MediaRecorder.AudioSource.MIC
         val channelConfig = AudioFormat.CHANNEL_IN_MONO
         val audioFormat = AudioFormat.ENCODING_PCM_16BIT
 
-        // 2. INCREASE BUFFER SIZE (* 4 for safety)
+        // 2. LARGE BUFFER (Fixes Underruns/Blocking)
         val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
         val bufferSize = minBufferSize * 4
 
-        val recorder = AudioRecord(audioSource, sampleRate, channelConfig, audioFormat, bufferSize)
-
-        // Hardware Noise Suppressor
-        if (useHwSuppressor && NoiseSuppressor.isAvailable()) {
-            try {
-                suppressor = NoiseSuppressor.create(recorder.audioSessionId)
-                if (suppressor != null) {
-                    suppressor?.enabled = true
-                    Log.i("AudioService", "NoiseSuppressor Enabled!")
-                }
-            } catch (e: Exception) {
-                Log.e("AudioService", "Failed to init NoiseSuppressor: ${e.message}")
-            }
-        }
-
-        // Hardware Echo Canceler
-        if (AcousticEchoCanceler.isAvailable()) {
-            try {
-                echo = AcousticEchoCanceler.create(recorder.audioSessionId)
-                if (echo != null) {
-                    echo?.enabled = true
-                }
-            } catch (e: Exception) {
-                Log.e("AudioService", "Failed to init AcousticEchoCanceler: ${e.message}")
-            }
-        }
-
-        val waveformIntent = Intent("com.mmd.microuter.WAVEFORM_DATA")
-        waveformIntent.setPackage(packageName)
-
-        val buffer = ByteArray(bufferSize)
+        var recorder: AudioRecord? = null
 
         try {
+            recorder = AudioRecord(audioSource, sampleRate, channelConfig, audioFormat, bufferSize)
+
+            // Hardware Noise Suppressor
+            if (useHwSuppressor && NoiseSuppressor.isAvailable()) {
+                try {
+                    suppressor = NoiseSuppressor.create(recorder.audioSessionId)
+                    suppressor?.enabled = true
+                    Log.i("AudioService", "NoiseSuppressor ON")
+                } catch (e: Exception) { Log.e("AudioService", "NS Failed: ${e.message}") }
+            }
+
+            // Echo Canceler
+            if (AcousticEchoCanceler.isAvailable()) {
+                try {
+                    echo = AcousticEchoCanceler.create(recorder.audioSessionId)
+                    echo?.enabled = true
+                } catch (e: Exception) { Log.e("AudioService", "AEC Failed: ${e.message}") }
+            }
+
+            // Setup Visualizer Intents
+            val sessionIntent = Intent("com.mmd.microuter.AUDIO_SESSION_ID")
+            sessionIntent.setPackage(packageName)
+            sessionIntent.putExtra("audio_session_id", recorder.audioSessionId)
+            sendBroadcast(sessionIntent)
+
+            val waveformIntent = Intent("com.mmd.microuter.WAVEFORM_DATA")
+            waveformIntent.setPackage(packageName)
+
+            val buffer = ByteArray(bufferSize)
             val output = DataOutputStream(socket.getOutputStream())
 
-            // Send Header
+            // Handshake
             output.writeInt(sampleRate)
 
             recorder.startRecording()
 
+            // 3. STREAMING LOOP
             while (isStreaming.get() && socket.isConnected && !socket.isClosed) {
                 val read = recorder.read(buffer, 0, buffer.size)
 
                 if (read > 0) {
-                    // 1. CALCULATE LOUDNESS (RMS)
+                    // RMS Calculation
                     var sum = 0.0
                     for (i in 0 until read step 2) {
-                        val low = buffer[i].toInt() and 0xFF
-                        val high = buffer[i + 1].toInt() shl 8
-                        val sample = (high or low).toShort()
+                        val sample = ((buffer[i+1].toInt() shl 8) or (buffer[i].toInt() and 0xFF)).toShort()
                         sum += sample * sample
                     }
                     val rms = sqrt(sum / (read / 2))
 
-                    // 2. APPLY NOISE GATE (Mute if quiet)
+                    // Software Noise Gate
                     if (rms < noiseGateThreshold) {
                         Arrays.fill(buffer, 0, read, 0.toByte())
                     }
 
-                    // 3. SEND TO PC
+                    // Send to PC
                     output.write(buffer, 0, read)
 
-                    // 4. SEND TO VISUALIZER (Safe Slice)
-                    // Fix: Only send the valid bytes read, not the full buffer
+                    // Send to Visualizer (Fixing the glitchy graph)
+                    // We only send the VALID bytes, not the full garbage buffer
                     val validData = buffer.copyOfRange(0, read)
                     waveformIntent.putExtra("waveform_data", validData)
                     sendBroadcast(waveformIntent)
                 }
             }
         } catch (e: Exception) {
-            Log.e("AudioService", "Stream loop error", e)
+            Log.e("AudioService", "Streaming interrupted: ${e.message}")
         } finally {
+            // 4. CLEANUP
             try {
-                if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                if (recorder?.state == AudioRecord.STATE_INITIALIZED) {
                     recorder.stop()
                 }
-                recorder.release()
+                recorder?.release()
                 suppressor?.release()
                 echo?.release()
             } catch (e: Exception) {
-                Log.e("AudioService", "Cleanup error", e)
+                Log.e("AudioService", "Cleanup failed", e)
             }
         }
     }
