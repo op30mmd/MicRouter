@@ -41,7 +41,37 @@ jobs:
           name: microuter-apk
           path: android/app/build/outputs/apk/release/app-release.apk
 
-  build_pc:
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          # Install system header for PyAudio (PortAudio) on Linux
+          sudo apt-get install -y portaudio19-dev 
+          pip install -r desktop/backend/requirements.txt
+
+      - name: Run Linter (Flake8)
+        run: |
+          # Check for syntax errors (E9) and undefined names (F63, F7, F82)
+          # We ignore line length (E501) because UI code often has long lines
+          flake8 desktop/backend --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 desktop/backend --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run Unit Tests
+        run: |
+          # Run the tests we created in Step 2
+          python -m unittest discover -s desktop/backend/tests -p "test_*.py"
+
+  build-windows:
+    needs: test-python
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -89,7 +119,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [build_android, build_pc]
+    needs: [build_android, build-windows]
     if: github.event_name == 'push'
     steps:
       - name: Checkout code
