@@ -6,12 +6,12 @@ import struct
 import pyaudio
 import numpy as np
 import subprocess
-import os
 import sys
+import os # Required for killing the process
 
 # CONFIGURATION
-FLUTTER_PORT = 5000  # Port to talk to UI
-ANDROID_PORT = 6000  # Port to receive Audio
+FLUTTER_PORT = 5000
+ANDROID_PORT = 6000
 
 class BackendServer:
     def __init__(self):
@@ -19,18 +19,16 @@ class BackendServer:
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind(('127.0.0.1', FLUTTER_PORT))
         self.server_socket.listen(1)
-
+        
         self.client_socket = None
         self.is_streaming = False
         self.audio_thread = None
-
+        
         self.p = pyaudio.PyAudio()
         self.device_map = {}
+        self.current_gain = 1.0
 
-        # STATE
-        self.current_gain = 1.0  # Default volume boost
-        
-        # ADD THIS: Start checking if the parent (Flutter) is alive
+        # Start the "Zombie Killer" watchdog
         self.start_parent_watchdog()
 
     def start_parent_watchdog(self):
