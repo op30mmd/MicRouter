@@ -154,11 +154,6 @@ class AudioService : Service() {
         val bufferSize = minBufferSize * 8
 
         try {
-            val attributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build()
-
             val format = AudioFormat.Builder()
                 .setSampleRate(sampleRate)
                 .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
@@ -168,7 +163,6 @@ class AudioService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 recorder = AudioRecord.Builder()
                     .setAudioSource(MediaRecorder.AudioSource.MIC)
-                    .setAudioAttributes(attributes)
                     .setAudioFormat(format)
                     .setBufferSizeInBytes(bufferSize)
                     .build()
@@ -188,7 +182,6 @@ class AudioService : Service() {
             recorder?.startRecording()
             AppLogger.i("AudioService", "Microphone Started")
             
-            // Broadcast Session ID for Visualizer
             val sessionIntent = Intent("com.mmd.microuter.AUDIO_SESSION_ID")
             sessionIntent.setPackage(packageName)
             sessionIntent.putExtra("audio_session_id", recorder!!.audioSessionId)
@@ -197,7 +190,7 @@ class AudioService : Service() {
             return true
         } catch (e: Exception) {
             AppLogger.e("AudioService", "Mic Init Failed: ${e.message}")
-            releaseMic() // Ensure cleanup on partial failure
+            releaseMic()
             return false
         }
     }
