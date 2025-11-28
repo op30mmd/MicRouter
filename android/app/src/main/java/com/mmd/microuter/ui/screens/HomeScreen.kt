@@ -20,23 +20,28 @@ fun HomeScreen(
     viewModel: MainViewModel
 ) {
     val audioData by viewModel.audioData.collectAsState()
+    val serviceStatus by viewModel.serviceStatus.collectAsState()
     val isRunning by viewModel.isServiceRunning.collectAsState()
     val serverPort by viewModel.serverPort.collectAsState()
+    val sampleRate by viewModel.displaySampleRate.collectAsState()
+
     val context = LocalContext.current
 
-    // FIX 3: Remove Scaffold here.
-    // We are already inside a Scaffold in MainScreen.
-    // Using another Scaffold doubles the padding and breaks centering.
-    // We just need a Column filling the available space.
+    // Helper to determine status color and text
+    val (statusText, statusColor) = when (serviceStatus) {
+        "WAITING_FOR_PC" -> "Waiting for PC..." to Color(0xFFFFB300) // Amber
+        "PC_CONNECTED" -> "Streaming Active" to Color(0xFF00E676) // Green
+        "STOPPED" -> "Service Stopped" to MaterialTheme.colorScheme.onSurface
+        else -> serviceStatus to MaterialTheme.colorScheme.error // Red for errors
+    }
 
     Column(
         modifier = Modifier
-            .fillMaxSize() // Fill the space provided by NavHost
+            .fillMaxSize()
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center // This guarantees vertical centering
+        verticalArrangement = Arrangement.Center
     ) {
-        // Top Bar Title (Manually added since we removed internal Scaffold)
         Text(
             text = "MicRouter",
             style = MaterialTheme.typography.headlineMedium,
@@ -44,7 +49,7 @@ fun HomeScreen(
             color = MaterialTheme.colorScheme.onBackground
         )
 
-        Spacer(modifier = Modifier.weight(1f)) // Flexible spacer to push content to center
+        Spacer(modifier = Modifier.weight(1f))
 
         // Visualizer Card
         Card(
@@ -59,11 +64,12 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(32.dp))
 
+        // Dynamic Status Text
         Text(
-            text = if (isRunning) "Status: Streaming" else "Status: Stopped",
+            text = statusText,
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = if (isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            color = statusColor
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -80,8 +86,25 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text("Port: $serverPort", color = Color.Gray)
+        // Info Row
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Badge(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ) {
+                Text("Port: $serverPort", modifier = Modifier.padding(4.dp))
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Badge(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ) {
+                Text("$sampleRate Hz", modifier = Modifier.padding(4.dp))
+            }
+        }
 
-        Spacer(modifier = Modifier.weight(1f)) // Flexible spacer to balance bottom
+        Spacer(modifier = Modifier.weight(1f))
     }
 }
