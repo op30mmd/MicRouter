@@ -1,27 +1,24 @@
 package com.mmd.microuter.ui.screens
 
-import android.content.Context
 import android.media.MediaRecorder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -32,42 +29,78 @@ import androidx.preference.PreferenceManager
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onOpenDebug: () -> Unit = {}
+    onOpenDebug: () -> Unit = {},
+    onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
     val scrollState = rememberScrollState()
 
     // --- STATE VARIABLES ---
-    // We initialize state from SharedPreferences.
-    // When state changes, we update the UI *and* save to Prefs immediately.
-
     var port by remember { mutableStateOf(prefs.getString("server_port", "6000") ?: "6000") }
     var showPortDialog by remember { mutableStateOf(false) }
 
     var sampleRate by remember { mutableStateOf(prefs.getString("sample_rate", "48000") ?: "48000") }
-
-//... existing imports
-
-    // --- STATE VARIABLES ---
-    // ... existing state variables
     var showSampleRateMenu by remember { mutableStateOf(false) }
 
-    val audioSourceMap = mapOf(
-        MediaRecorder.AudioSource.DEFAULT to "Default",
-        MediaRecorder.AudioSource.MIC to "Microphone",
-        MediaRecorder.AudioSource.VOICE_RECOGNITION to "Voice Recognition",
-        MediaRecorder.AudioSource.VOICE_COMMUNICATION to "Voice Communication"
-    )
+    // --- NEW: Audio Source State ---
+    val audioSourceMap = remember {
+        mapOf(
+            MediaRecorder.AudioSource.DEFAULT to "Default",
+            MediaRecorder.AudioSource.MIC to "Microphone",
+            MediaRecorder.AudioSource.VOICE_RECOGNITION to "Voice Recognition",
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION to "Voice Communication"
+            // Optional: Add UNPROCESSED (Android 7+) if you want raw audio
+            // MediaRecorder.AudioSource.UNPROCESSED to "Raw / Unprocessed" 
+        )
+    }
     var audioSource by remember { mutableStateOf(prefs.getInt("audio_source", MediaRecorder.AudioSource.MIC)) }
     var showAudioSourceMenu by remember { mutableStateOf(false) }
+    // ------------------------------
 
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
-//... existing UI code
+    // RESTORED: This variable was accidentally deleted in previous edits
+    var noiseGate by remember { mutableStateOf(prefs.getInt("noise_gate_threshold", 100).toFloat()) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Settings", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(16.dp)
+        ) {
+
+            // --- CONNECTION SECTION ---
+            SectionHeader("Connection")
+            SettingsCard {
+                SettingsItem(
+                    icon = Icons.Outlined.Router,
+                    title = "Server Port",
+                    subtitle = port,
+                    onClick = { showPortDialog = true }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             // --- AUDIO QUALITY SECTION ---
             SectionHeader("Audio Quality")
-
             SettingsCard {
                 // Sample Rate Setting
                 Box(modifier = Modifier.fillMaxWidth()) {
@@ -78,20 +111,16 @@ fun SettingsScreen(
                         onClick = { showSampleRateMenu = true }
                     )
 
-                    // FIX: Align the menu to the Right (End) side of the row
                     Box(modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .padding(end = 16.dp) // Align with the text margin
+                        .padding(end = 16.dp)
                     ) {
                         DropdownMenu(
                             expanded = showSampleRateMenu,
                             onDismissRequest = { showSampleRateMenu = false },
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                            // FIX: Use 'surface' color to contrast against the 'surfaceContainerHigh' card
                             containerColor = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 8.dp,
-                            // FIX: Adjust offset to position it nicely near the value text
-                            offset = androidx.compose.ui.unit.DpOffset(x = 0.dp, y = 0.dp)
+                            tonalElevation = 8.dp
                         ) {
                             listOf("16000", "44100", "48000").forEach { rate ->
                                 DropdownMenuItem(
@@ -117,7 +146,7 @@ fun SettingsScreen(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                // Audio Source Setting
+                // --- NEW: Audio Source Setting ---
                 Box(modifier = Modifier.fillMaxWidth()) {
                     SettingsItem(
                         icon = Icons.Outlined.SettingsVoice,
@@ -158,16 +187,9 @@ fun SettingsScreen(
                         }
                     }
                 }
-                Text(
-                    "Restart server to apply changes.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
-                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-//... rest of the file
 
             // --- NOISE PROCESSING SECTION ---
             SectionHeader("Noise Processing")
@@ -336,3 +358,6 @@ fun IconBox(icon: ImageVector) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
     }
 }
+
+
+

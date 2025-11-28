@@ -29,6 +29,10 @@ fun DebugScreen(onBackClick: () -> Unit) {
     val logs by AppLogger.logs.collectAsState()
     val clipboardManager = LocalClipboardManager.current
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
+// ... existing imports
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -55,7 +59,8 @@ fun DebugScreen(onBackClick: () -> Unit) {
                     containerColor = MaterialTheme.colorScheme.background
                 )
             )
-        }
+        },
+        contentWindowInsets = WindowInsets.Companion.systemBars
     ) { padding ->
         Column(
             modifier = Modifier
