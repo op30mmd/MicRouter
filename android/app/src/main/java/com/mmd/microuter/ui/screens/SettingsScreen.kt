@@ -1,18 +1,15 @@
 package com.mmd.microuter.ui.screens
 
 import android.media.MediaRecorder
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,8 +26,8 @@ import androidx.preference.PreferenceManager
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onOpenDebug: () -> Unit = {},
-    onBackClick: () -> Unit
+    onOpenDebug: () -> Unit = {}
+    // REMOVED: onBackClick parameter
 ) {
     val context = LocalContext.current
     val prefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
@@ -43,38 +40,31 @@ fun SettingsScreen(
     var sampleRate by remember { mutableStateOf(prefs.getString("sample_rate", "48000") ?: "48000") }
     var showSampleRateMenu by remember { mutableStateOf(false) }
 
-    // --- NEW: Audio Source State ---
     val audioSourceMap = remember {
         mapOf(
             MediaRecorder.AudioSource.DEFAULT to "Default",
             MediaRecorder.AudioSource.MIC to "Microphone",
             MediaRecorder.AudioSource.VOICE_RECOGNITION to "Voice Recognition",
             MediaRecorder.AudioSource.VOICE_COMMUNICATION to "Voice Communication"
-            // Optional: Add UNPROCESSED (Android 7+) if you want raw audio
-            // MediaRecorder.AudioSource.UNPROCESSED to "Raw / Unprocessed" 
         )
     }
     var audioSource by remember { mutableStateOf(prefs.getInt("audio_source", MediaRecorder.AudioSource.MIC)) }
     var showAudioSourceMenu by remember { mutableStateOf(false) }
-    // ------------------------------
 
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
-    // RESTORED: This variable was accidentally deleted in previous edits
-    var noiseGate by remember { mutableStateOf(prefs.getInt("noise_gate_threshold", 100).toFloat()) }
-
     Scaffold(
+        // FIX 1: Remove "Safe Area" calculation so Scaffold draws behind status bar
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
+                // REMOVED: navigationIcon block (The Back Button)
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
-                )
+                ),
+                // FIX 2: Tell AppBar to handle status bar padding internally
+                windowInsets = WindowInsets.statusBars
             )
         }
     ) { padding ->
@@ -84,6 +74,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(16.dp)
+                .navigationBarsPadding() // FIX 3: Prevent content from hiding behind nav bar
         ) {
 
             // --- CONNECTION SECTION ---
@@ -102,7 +93,7 @@ fun SettingsScreen(
             // --- AUDIO QUALITY SECTION ---
             SectionHeader("Audio Quality")
             SettingsCard {
-                // Sample Rate Setting
+                // Sample Rate
                 Box(modifier = Modifier.fillMaxWidth()) {
                     SettingsItem(
                         icon = Icons.Outlined.GraphicEq,
@@ -110,34 +101,22 @@ fun SettingsScreen(
                         subtitle = "$sampleRate Hz",
                         onClick = { showSampleRateMenu = true }
                     )
-
-                    Box(modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 16.dp)
-                    ) {
+                    Box(modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp)) {
                         DropdownMenu(
                             expanded = showSampleRateMenu,
                             onDismissRequest = { showSampleRateMenu = false },
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(12.dp),
                             containerColor = MaterialTheme.colorScheme.surface,
                             tonalElevation = 8.dp
                         ) {
                             listOf("16000", "44100", "48000").forEach { rate ->
                                 DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            text = "$rate Hz",
-                                            fontWeight = if (sampleRate == rate) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                    },
+                                    text = { Text(text = "$rate Hz", fontWeight = if (sampleRate == rate) FontWeight.Bold else FontWeight.Normal) },
                                     onClick = {
                                         sampleRate = rate
                                         prefs.edit().putString("sample_rate", rate).apply()
                                         showSampleRateMenu = false
-                                    },
-                                    colors = MenuDefaults.itemColors(
-                                        textColor = if (sampleRate == rate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
+                                    }
                                 )
                             }
                         }
@@ -146,7 +125,7 @@ fun SettingsScreen(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                // --- NEW: Audio Source Setting ---
+                // Audio Source
                 Box(modifier = Modifier.fillMaxWidth()) {
                     SettingsItem(
                         icon = Icons.Outlined.SettingsVoice,
@@ -154,34 +133,22 @@ fun SettingsScreen(
                         subtitle = audioSourceMap[audioSource] ?: "Unknown",
                         onClick = { showAudioSourceMenu = true }
                     )
-
-                    Box(modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 16.dp)
-                    ) {
+                    Box(modifier = Modifier.align(Alignment.CenterEnd).padding(end = 16.dp)) {
                         DropdownMenu(
                             expanded = showAudioSourceMenu,
                             onDismissRequest = { showAudioSourceMenu = false },
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(12.dp),
                             containerColor = MaterialTheme.colorScheme.surface,
                             tonalElevation = 8.dp
                         ) {
                             audioSourceMap.forEach { (key, value) ->
                                 DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            text = value,
-                                            fontWeight = if (audioSource == key) FontWeight.Bold else FontWeight.Normal
-                                        )
-                                    },
+                                    text = { Text(text = value, fontWeight = if (audioSource == key) FontWeight.Bold else FontWeight.Normal) },
                                     onClick = {
                                         audioSource = key
                                         prefs.edit().putInt("audio_source", key).apply()
                                         showAudioSourceMenu = false
-                                    },
-                                    colors = MenuDefaults.itemColors(
-                                        textColor = if (audioSource == key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
+                                    }
                                 )
                             }
                         }
@@ -193,9 +160,7 @@ fun SettingsScreen(
 
             // --- NOISE PROCESSING SECTION ---
             SectionHeader("Noise Processing")
-
             SettingsCard {
-                // Hardware Suppressor Switch
                 SwitchItem(
                     icon = Icons.Outlined.Hearing,
                     title = "Hardware Suppression",
@@ -206,42 +171,12 @@ fun SettingsScreen(
                         prefs.edit().putBoolean("enable_hw_suppressor", it).apply()
                     }
                 )
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                // Noise Gate Slider
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconBox(Icons.Outlined.MicOff)
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text("Noise Gate Threshold", fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${noiseGate.toInt()}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(40.dp))
-                        Slider(
-                            value = noiseGate,
-                            onValueChange = {
-                                noiseGate = it
-                                prefs.edit().putInt("noise_gate_threshold", it.toInt()).apply()
-                            },
-                            valueRange = 0f..300f,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    Text(
-                        "Silences audio below this volume level.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 56.dp)
-                    )
-                }
+                // REMOVED: Noise Gate Slider Logic completely
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // --- DEVELOPER SECTION ---
             SectionHeader("Developer")
             SettingsCard {
                 SettingsItem(
@@ -257,7 +192,6 @@ fun SettingsScreen(
     }
 
     // --- DIALOGS ---
-
     if (showPortDialog) {
         var tempPort by remember { mutableStateOf(port) }
         AlertDialog(
@@ -342,6 +276,7 @@ fun SwitchItem(icon: ImageVector, title: String, subtitle: String, checked: Bool
             Text(title, fontWeight = FontWeight.SemiBold)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        Spacer(modifier = Modifier.width(8.dp))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
@@ -358,6 +293,3 @@ fun IconBox(icon: ImageVector) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
     }
 }
-
-
-
