@@ -177,6 +177,10 @@ class BackendServer:
                 try:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+                    # --- ADD THIS: Reduce Receive Buffer to ~4 packets ---
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+
                     sock.settimeout(2)
                     sock.connect(('127.0.0.1', port))
                     connected = True
@@ -249,6 +253,21 @@ class BackendServer:
 
             self.send_to_flutter({"type": "status", "payload": "running"})
             self.send_to_flutter({"type": "log", "message": "[*] Streaming audio..."})
+
+            # --- ADD THIS: Flush the socket to remove startup latency ---
+            try:
+                sock.setblocking(0) # Non-blocking mode
+                while True:
+                    # Dump everything currently in the buffer
+                    junk = sock.recv(4096)
+                    if not junk: break
+            except BlockingIOError:
+                pass # Buffer is empty, we are now "live"
+            except Exception:
+                pass
+            finally:
+                sock.setblocking(1) # Back to blocking mode
+            # -----------------------------------------------------------
 
             # --- STREAM LOOP (with length-prefixed packets) ---
             consecutive_errors = 0
