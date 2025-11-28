@@ -341,7 +341,7 @@ class AudioService : Service() {
         try {
             socket.tcpNoDelay = true
             socket.soTimeout = 5000
-            socket.sendBufferSize = 65536
+            socket.sendBufferSize = 4096
             
             val input = DataInputStream(socket.getInputStream())
             val output = DataOutputStream(socket.getOutputStream())
