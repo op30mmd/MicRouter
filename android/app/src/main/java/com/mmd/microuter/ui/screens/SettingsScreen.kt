@@ -1,6 +1,7 @@
 package com.mmd.microuter.ui.screens
 
 import android.content.Context
+import android.media.MediaRecorder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -45,7 +46,7 @@ fun SettingsScreen(
     var showPortDialog by remember { mutableStateOf(false) }
 
     var sampleRate by remember { mutableStateOf(prefs.getString("sample_rate", "48000") ?: "48000") }
-import android.media.MediaRecorder
+
 //... existing imports
 
     // --- STATE VARIABLES ---
@@ -157,6 +158,12 @@ import android.media.MediaRecorder
                         }
                     }
                 }
+                Text(
+                    "Restart server to apply changes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
