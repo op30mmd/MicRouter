@@ -42,33 +42,40 @@ class RNNoise:
 
     def process(self, chunk_bytes):
         """
-        Takes raw int16 bytes (arbitrary length).
-        Returns denoised raw int16 bytes.
+        Takes raw int16 bytes. Returns denoised raw int16 bytes.
         """
-        # 1. Add new data to our internal buffer
-        new_data = np.frombuffer(chunk_bytes, dtype=np.int16)
-        self.buffer = np.concatenate((self.buffer, new_data))
-        
-        output_bytes = bytearray()
-
-        # 2. Process as many 480-sample chunks as we have
-        while len(self.buffer) >= self.FRAME_SIZE:
-            # Take one frame
-            frame = self.buffer[:self.FRAME_SIZE]
-            self.buffer = self.buffer[self.FRAME_SIZE:]
-
-            # Convert int16 -> float32
-            frame_float = frame.astype(np.float32)
-
-            # Create pointers
+        # --- OPTIMIZATION: Fast Path for exact 10ms chunks ---
+        if len(chunk_bytes) == 960: # 480 samples * 2 bytes
+            # Convert bytes directly to float input buffer
+            frame_float = np.frombuffer(chunk_bytes, dtype=np.int16).astype(np.float32)
+            
+            # Prepare C pointers
             in_ptr = frame_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
             out_float = np.zeros(self.FRAME_SIZE, dtype=np.float32)
             out_ptr = out_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
 
-            # Run AI Denoising
+            # Process immediately
             self.lib.rnnoise_process_frame(self.state, out_ptr, in_ptr)
 
-            # Convert float32 -> int16
+            return out_float.astype(np.int16).tobytes()
+        
+        # --- Existing Slow Path (Buffering) for other sizes ---
+        new_data = np.frombuffer(chunk_bytes, dtype=np.int16)
+        self.buffer = np.concatenate((self.buffer, new_data))
+        
+        output_bytes = bytearray()
+        
+        while len(self.buffer) >= self.FRAME_SIZE:
+            frame = self.buffer[:self.FRAME_SIZE]
+            self.buffer = self.buffer[self.FRAME_SIZE:]
+
+            frame_float = frame.astype(np.float32)
+            in_ptr = frame_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            out_float = np.zeros(self.FRAME_SIZE, dtype=np.float32)
+            out_ptr = out_float.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+
+            self.lib.rnnoise_process_frame(self.state, out_ptr, in_ptr)
+
             processed_frame = out_float.astype(np.int16)
             output_bytes.extend(processed_frame.tobytes())
 

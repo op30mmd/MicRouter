@@ -244,7 +244,7 @@ class BackendServer:
                 rate=sample_rate,
                 output=True,
                 output_device_index=device_index,
-                frames_per_buffer=2048
+                frames_per_buffer=480  # <--- CHANGED FROM 2048
             )
 
             self.send_to_flutter({"type": "status", "payload": "running"})

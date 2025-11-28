@@ -332,7 +332,7 @@ class AudioService : Service() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val noiseGateThreshold = prefs.getInt("noise_gate_threshold", 100).toDouble()
 
-        val bufferSize = 2048
+        val bufferSize = 960
         val buffer = ByteArray(bufferSize)
         val waveformIntent = Intent("com.mmd.microuter.WAVEFORM_DATA").apply { 
             setPackage(packageName) 
@@ -401,16 +401,16 @@ class AudioService : Service() {
 
                         output.writeInt(read)
                         output.write(buffer, 0, read)
+                        output.flush() // CHANGE 2: Flush immediately for low latency
                         
-                        if (broadcastCounter++ % 5 == 0) {
-                            output.flush()
+                        if (broadcastCounter++ % 10 == 0) { // Throttle waveform slightly more
                             val validData = buffer.copyOfRange(0, read)
                             waveformIntent.putExtra("waveform_data", validData)
                             sendBroadcast(waveformIntent)
                         }
                     }
                     read == 0 -> {
-                        Thread.sleep(1)
+                        // CHANGE 3: Remove Thread.sleep(1)
                     }
                     else -> {
                         consecutiveErrors++
