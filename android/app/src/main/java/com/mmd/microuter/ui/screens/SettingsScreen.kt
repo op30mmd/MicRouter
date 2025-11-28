@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -60,10 +61,9 @@ fun SettingsScreen(
 
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
-    // RESTORED: This variable was accidentally deleted in previous edits
-    var noiseGate by remember { mutableStateOf(prefs.getInt("noise_gate_threshold", 100).toFloat()) }
-
     Scaffold(
+        // FIX 1: Force Scaffold to fill the ENTIRE screen (no margins)
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
@@ -74,7 +74,9 @@ fun SettingsScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
-                )
+                ),
+                // FIX 2: Tell TopAppBar to pad ITSELF for the status bar
+                windowInsets = WindowInsets.statusBars
             )
         }
     ) { padding ->
@@ -84,6 +86,8 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(16.dp)
+                // FIX 3: Add padding at the bottom so content isn't hidden by the Nav Bar
+                .navigationBarsPadding()
         ) {
 
             // --- CONNECTION SECTION ---
@@ -206,38 +210,6 @@ fun SettingsScreen(
                         prefs.edit().putBoolean("enable_hw_suppressor", it).apply()
                     }
                 )
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                // Noise Gate Slider
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconBox(Icons.Outlined.MicOff)
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text("Noise Gate Threshold", fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${noiseGate.toInt()}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(40.dp))
-                        Slider(
-                            value = noiseGate,
-                            onValueChange = {
-                                noiseGate = it
-                                prefs.edit().putInt("noise_gate_threshold", it.toInt()).apply()
-                            },
-                            valueRange = 0f..300f,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    Text(
-                        "Silences audio below this volume level.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 56.dp)
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
