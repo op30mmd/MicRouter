@@ -87,8 +87,7 @@ fun MainScreen(viewModel: MainViewModel) {
             }
             composable(BottomNavItem.Settings.route) {
                 SettingsScreen(
-                    onOpenDebug = { navController.navigate("debug") }, // Pass a callback
-                    onBackClick = { navController.popBackStack() }
+                    onOpenDebug = { navController.navigate("debug") } // Pass a callback
                 )
             }
             
