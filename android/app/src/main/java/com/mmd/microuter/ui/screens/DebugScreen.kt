@@ -23,15 +23,15 @@ import androidx.compose.ui.unit.sp
 import com.mmd.microuter.utils.AppLogger
 import com.mmd.microuter.utils.LogLevel
 
+// Fixed imports for WindowInsets/systemBars which were mistakenly placed inside the function
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.systemBars
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DebugScreen(onBackClick: () -> Unit) {
     val logs by AppLogger.logs.collectAsState()
     val clipboardManager = LocalClipboardManager.current
-
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.systemBars
-// ... existing imports
 
     Scaffold(
         topBar = {
@@ -60,7 +60,7 @@ import androidx.compose.foundation.layout.systemBars
                 )
             )
         },
-        contentWindowInsets = WindowInsets.Companion.systemBars
+        contentWindowInsets = WindowInsets.systemBars
     ) { padding ->
         Column(
             modifier = Modifier
@@ -114,4 +114,3 @@ import androidx.compose.foundation.layout.systemBars
         }
     }
 }
-
