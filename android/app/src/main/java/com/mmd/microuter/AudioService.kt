@@ -334,7 +334,6 @@ class AudioService : Service() {
 
     private fun handleClientConnection(socket: Socket) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
-        val noiseGateThreshold = prefs.getInt("noise_gate_threshold", 100).toDouble()
 
         val bufferSize = 960
         val buffer = ByteArray(bufferSize)
@@ -389,20 +388,6 @@ class AudioService : Service() {
                     read > 0 -> {
                         consecutiveErrors = 0
                         
-                        // Apply noise gate
-                        var sum = 0.0
-                        for (i in 0 until read step 2) {
-                            if (i + 1 < read) {
-                                val sample = ((buffer[i + 1].toInt() shl 8) or (buffer[i].toInt() and 0xFF)).toShort()
-                                sum += sample * sample
-                            }
-                        }
-                        val rms = sqrt(sum / (read / 2))
-
-                        if (rms < noiseGateThreshold) {
-                            Arrays.fill(buffer, 0, read, 0.toByte())
-                        }
-
                         output.writeInt(read)
                         output.write(buffer, 0, read)
                         output.flush() // CHANGE 2: Flush immediately for low latency

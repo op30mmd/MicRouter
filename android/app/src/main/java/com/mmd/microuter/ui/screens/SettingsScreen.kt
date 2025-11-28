@@ -60,9 +60,6 @@ fun SettingsScreen(
 
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
-    // RESTORED: This variable was accidentally deleted in previous edits
-    var noiseGate by remember { mutableStateOf(prefs.getInt("noise_gate_threshold", 100).toFloat()) }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -206,38 +203,6 @@ fun SettingsScreen(
                         prefs.edit().putBoolean("enable_hw_suppressor", it).apply()
                     }
                 )
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                // Noise Gate Slider
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconBox(Icons.Outlined.MicOff)
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text("Noise Gate Threshold", fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${noiseGate.toInt()}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.width(40.dp))
-                        Slider(
-                            value = noiseGate,
-                            onValueChange = {
-                                noiseGate = it
-                                prefs.edit().putInt("noise_gate_threshold", it.toInt()).apply()
-                            },
-                            valueRange = 0f..300f,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    Text(
-                        "Silences audio below this volume level.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 56.dp)
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
