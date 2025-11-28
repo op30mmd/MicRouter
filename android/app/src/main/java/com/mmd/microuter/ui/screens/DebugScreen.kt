@@ -6,7 +6,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
@@ -34,7 +35,7 @@ fun DebugScreen(onBackClick: () -> Unit) {
                 title = { Text("Debug Console", fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
@@ -101,7 +102,7 @@ fun DebugScreen(onBackClick: () -> Unit) {
                                 fontFamily = FontFamily.Monospace
                             )
                         }
-                        Divider(color = Color.DarkGray.copy(alpha = 0.3f))
+                        HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.3f))
                     }
                 }
             }
