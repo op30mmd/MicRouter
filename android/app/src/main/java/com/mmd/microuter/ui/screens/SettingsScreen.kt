@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -61,6 +62,8 @@ fun SettingsScreen(
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
     Scaffold(
+        // FIX 1: Force Scaffold to fill the ENTIRE screen (no margins)
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
@@ -71,7 +74,9 @@ fun SettingsScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
-                )
+                ),
+                // FIX 2: Tell TopAppBar to pad ITSELF for the status bar
+                windowInsets = WindowInsets.statusBars
             )
         }
     ) { padding ->
@@ -81,6 +86,8 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(16.dp)
+                // FIX 3: Add padding at the bottom so content isn't hidden by the Nav Bar
+                .navigationBarsPadding()
         ) {
 
             // --- CONNECTION SECTION ---

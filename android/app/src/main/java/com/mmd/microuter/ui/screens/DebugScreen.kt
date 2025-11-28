@@ -25,6 +25,7 @@ import com.mmd.microuter.utils.LogLevel
 
 // Fixed imports for WindowInsets/systemBars which were mistakenly placed inside the function
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.systemBars
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,6 +35,10 @@ fun DebugScreen(onBackClick: () -> Unit) {
     val clipboardManager = LocalClipboardManager.current
 
     Scaffold(
+        // FIX 1: Apply the black background to the CONTAINER (fills behind status bar)
+        containerColor = Color(0xFF0F0F0F),
+        // FIX 2: Remove the "systemBars" insets (set to 0) to kill the margins
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text("Debug Console", fontSize = 18.sp) },
@@ -56,17 +61,24 @@ fun DebugScreen(onBackClick: () -> Unit) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+                    // Make AppBar transparent so it blends with the Scaffold black
+                    containerColor = Color.Transparent,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
+                ),
+                // FIX 3: Handle Status Bar padding internally
+                windowInsets = WindowInsets.statusBars
             )
-        },
-        contentWindowInsets = WindowInsets.systemBars
+        }
     ) { padding ->
         Column(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .background(Color(0xFF0F0F0F)) // Terminal Black
+                // REMOVED: .background(Color(0xFF0F0F0F)) (It is now on Scaffold)
+                // FIX 4: Ensure the bottom log isn't covered by the Nav Bar
+                .navigationBarsPadding()
         ) {
             SelectionContainer {
                 LazyColumn(
