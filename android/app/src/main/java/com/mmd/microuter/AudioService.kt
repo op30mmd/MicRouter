@@ -14,7 +14,6 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import android.os.IBinder
-import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.preference.PreferenceManager
@@ -28,8 +27,6 @@ import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.util.Arrays
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 import kotlin.math.sqrt
 
 class AudioService : Service() {
@@ -43,7 +40,7 @@ class AudioService : Service() {
     private var recorder: AudioRecord? = null
     private var suppressor: NoiseSuppressor? = null
     private var echo: AcousticEchoCanceler? = null
-    private val recorderLock = ReentrantLock()
+    private val recorderLock = Object() // Use Object for synchronized blocks
     
     // Track actual initialized sample rate
     private var actualSampleRate: Int = 48000
@@ -132,7 +129,7 @@ class AudioService : Service() {
                 }
 
                 serverSocket = ServerSocket(port)
-                serverSocket?.soTimeout = 1000 // 1 second timeout for accept()
+                serverSocket?.soTimeout = 1000
                 
                 AppLogger.i("AudioService", "Server waiting on port $port")
                 broadcastStatus("WAITING_FOR_PC")
@@ -151,16 +148,12 @@ class AudioService : Service() {
                             lastConnectionTime = now
                             
                             // Ensure mic is ready before handling client
-                            recorderLock.withLock {
-                                if (recorder == null || recorder?.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
-                                    AppLogger.w("AudioService", "Mic not ready for new client. Reinitializing...")
-                                    releaseMicInternal()
-                                    if (!initMicrophoneInternal()) {
-                                        AppLogger.e("AudioService", "Failed to reinit mic. Rejecting client.")
-                                        client.close()
-                                        continue
-                                    }
-                                }
+                            val micReady = ensureMicReady()
+                            
+                            if (!micReady) {
+                                AppLogger.e("AudioService", "Failed to reinit mic. Rejecting client.")
+                                try { client.close() } catch (_: Exception) {}
+                                continue
                             }
                             
                             isClientConnected.set(true)
@@ -174,7 +167,6 @@ class AudioService : Service() {
                             broadcastStatus("WAITING_FOR_PC")
                         }
                     } catch (e: SocketTimeoutException) {
-                        // Normal timeout, just continue the loop
                         continue
                     } catch (e: SocketException) {
                         if (isServiceActive.get()) {
@@ -195,9 +187,20 @@ class AudioService : Service() {
         }
     }
 
+    private fun ensureMicReady(): Boolean {
+        synchronized(recorderLock) {
+            if (recorder == null || recorder?.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                AppLogger.w("AudioService", "Mic not ready for new client. Reinitializing...")
+                releaseMicInternal()
+                return initMicrophoneInternal()
+            }
+            return true
+        }
+    }
+
     private fun initMicrophone(): Boolean {
-        return recorderLock.withLock {
-            initMicrophoneInternal()
+        synchronized(recorderLock) {
+            return initMicrophoneInternal()
         }
     }
 
@@ -254,7 +257,6 @@ class AudioService : Service() {
         val bufferSize = maxOf(minBufferSize * 4, 4096)
 
         try {
-            // Release any existing recorder first
             releaseMicInternal()
             
             recorder = AudioRecord(
@@ -272,13 +274,10 @@ class AudioService : Service() {
                 return false
             }
 
-            // Attach audio effects
             attachAudioEffects(useHwSuppressor)
 
-            // Start recording
             recorder?.startRecording()
             
-            // Wait a bit for hardware to stabilize
             Thread.sleep(50)
 
             if (recorder?.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
@@ -287,7 +286,6 @@ class AudioService : Service() {
                 return false
             }
 
-            // Test read
             val testBuffer = ByteArray(1024)
             val testRead = recorder?.read(testBuffer, 0, testBuffer.size) ?: -1
             if (testRead < 0) {
@@ -341,21 +339,18 @@ class AudioService : Service() {
         }
 
         try {
-            // Configure socket for better reliability
             socket.tcpNoDelay = true
-            socket.soTimeout = 5000 // 5 second read timeout
+            socket.soTimeout = 5000
             socket.sendBufferSize = 65536
             
             val input = DataInputStream(socket.getInputStream())
             val output = DataOutputStream(socket.getOutputStream())
 
             // === HANDSHAKE PROTOCOL ===
-            // 1. Send sample rate
             output.writeInt(actualSampleRate)
             output.flush()
             AppLogger.d("AudioService", "Sent sample rate: $actualSampleRate")
             
-            // 2. Wait for client acknowledgment (with timeout)
             try {
                 val ack = input.readInt()
                 if (ack != actualSampleRate) {
@@ -368,8 +363,7 @@ class AudioService : Service() {
                 return
             }
             
-            // 3. Send ready signal
-            output.writeInt(0x52454459) // "REDY" in hex
+            output.writeInt(0x52454459) // "REDY"
             output.flush()
             AppLogger.i("AudioService", "Handshake complete, starting audio stream")
 
@@ -378,14 +372,13 @@ class AudioService : Service() {
             val maxConsecutiveErrors = 5
             
             while (isServiceActive.get() && !socket.isClosed && socket.isConnected) {
-                val read: Int
-                
-                recorderLock.withLock {
-                    if (recorder == null || recorder?.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
-                        AppLogger.e("AudioService", "Recorder not in recording state")
-                        return
-                    }
-                    read = recorder?.read(buffer, 0, buffer.size) ?: -1
+                // Read audio from recorder
+                val readResult = readFromRecorder(buffer)
+                val read = readResult.first
+                val shouldBreak = readResult.second
+
+                if (shouldBreak) {
+                    break
                 }
 
                 when {
@@ -406,49 +399,26 @@ class AudioService : Service() {
                             Arrays.fill(buffer, 0, read, 0.toByte())
                         }
 
-                        // Write with length prefix for reliable framing
                         output.writeInt(read)
                         output.write(buffer, 0, read)
-                        // Don't flush every packet for performance
                         
-                        // Throttled visualizer broadcast
                         if (broadcastCounter++ % 5 == 0) {
-                            output.flush() // Flush periodically
+                            output.flush()
                             val validData = buffer.copyOfRange(0, read)
                             waveformIntent.putExtra("waveform_data", validData)
                             sendBroadcast(waveformIntent)
                         }
                     }
                     read == 0 -> {
-                        // No data available, brief pause
                         Thread.sleep(1)
                     }
-                    read == AudioRecord.ERROR_INVALID_OPERATION -> {
-                        AppLogger.e("AudioService", "ERROR_INVALID_OPERATION")
-                        consecutiveErrors++
-                    }
-                    read == AudioRecord.ERROR_BAD_VALUE -> {
-                        AppLogger.e("AudioService", "ERROR_BAD_VALUE")
-                        consecutiveErrors++
-                    }
-                    read == AudioRecord.ERROR_DEAD_OBJECT -> {
-                        AppLogger.e("AudioService", "ERROR_DEAD_OBJECT - mic died")
-                        recorderLock.withLock { releaseMicInternal() }
-                        return
-                    }
-                    read == AudioRecord.ERROR -> {
-                        AppLogger.e("AudioService", "Generic ERROR")
-                        consecutiveErrors++
-                    }
                     else -> {
-                        AppLogger.e("AudioService", "Unknown read result: $read")
                         consecutiveErrors++
+                        if (consecutiveErrors >= maxConsecutiveErrors) {
+                            AppLogger.e("AudioService", "Too many consecutive errors, dropping client")
+                            break
+                        }
                     }
-                }
-                
-                if (consecutiveErrors >= maxConsecutiveErrors) {
-                    AppLogger.e("AudioService", "Too many consecutive errors, dropping client")
-                    return
                 }
             }
         } catch (e: SocketException) {
@@ -464,8 +434,44 @@ class AudioService : Service() {
         }
     }
 
+    /**
+     * Reads from recorder in a synchronized block.
+     * Returns Pair(bytesRead, shouldBreakLoop)
+     */
+    private fun readFromRecorder(buffer: ByteArray): Pair<Int, Boolean> {
+        synchronized(recorderLock) {
+            if (recorder == null || recorder?.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                AppLogger.e("AudioService", "Recorder not in recording state")
+                return Pair(-1, true) // shouldBreak = true
+            }
+            
+            val read = recorder?.read(buffer, 0, buffer.size) ?: -1
+            
+            return when (read) {
+                AudioRecord.ERROR_INVALID_OPERATION -> {
+                    AppLogger.e("AudioService", "ERROR_INVALID_OPERATION")
+                    Pair(read, false)
+                }
+                AudioRecord.ERROR_BAD_VALUE -> {
+                    AppLogger.e("AudioService", "ERROR_BAD_VALUE")
+                    Pair(read, false)
+                }
+                AudioRecord.ERROR_DEAD_OBJECT -> {
+                    AppLogger.e("AudioService", "ERROR_DEAD_OBJECT - mic died")
+                    releaseMicInternal()
+                    Pair(read, true) // shouldBreak = true
+                }
+                AudioRecord.ERROR -> {
+                    AppLogger.e("AudioService", "Generic ERROR")
+                    Pair(read, false)
+                }
+                else -> Pair(read, false)
+            }
+        }
+    }
+
     private fun releaseMic() {
-        recorderLock.withLock {
+        synchronized(recorderLock) {
             releaseMicInternal()
         }
     }
