@@ -213,14 +213,18 @@ class AudioService : Service() {
         val prefs = PreferenceManager.getDefaultSharedPreferences(this)
         val preferredSampleRate = prefs.getString("sample_rate", "48000")?.toIntOrNull() ?: 48000
         val useHwSuppressor = prefs.getBoolean("enable_hw_suppressor", true)
+        val preferredAudioSource = prefs.getInt("audio_source", MediaRecorder.AudioSource.MIC)
 
         val sampleRatesToTry = listOf(preferredSampleRate, 44100, 48000, 16000, 22050, 8000).distinct()
+        
+        // Prioritize user's choice, then add fallbacks
         val audioSourcesToTry = listOf(
+            preferredAudioSource,
             MediaRecorder.AudioSource.MIC,
             MediaRecorder.AudioSource.VOICE_COMMUNICATION,
             MediaRecorder.AudioSource.VOICE_RECOGNITION,
             MediaRecorder.AudioSource.DEFAULT
-        )
+        ).distinct()
 
         for (sampleRate in sampleRatesToTry) {
             for (audioSource in audioSourcesToTry) {

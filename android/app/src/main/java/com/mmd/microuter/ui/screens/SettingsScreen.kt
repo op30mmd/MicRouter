@@ -45,47 +45,25 @@ fun SettingsScreen(
     var showPortDialog by remember { mutableStateOf(false) }
 
     var sampleRate by remember { mutableStateOf(prefs.getString("sample_rate", "48000") ?: "48000") }
+import android.media.MediaRecorder
+//... existing imports
+
+    // --- STATE VARIABLES ---
+    // ... existing state variables
     var showSampleRateMenu by remember { mutableStateOf(false) }
+
+    val audioSourceMap = mapOf(
+        MediaRecorder.AudioSource.DEFAULT to "Default",
+        MediaRecorder.AudioSource.MIC to "Microphone",
+        MediaRecorder.AudioSource.VOICE_RECOGNITION to "Voice Recognition",
+        MediaRecorder.AudioSource.VOICE_COMMUNICATION to "Voice Communication"
+    )
+    var audioSource by remember { mutableStateOf(prefs.getInt("audio_source", MediaRecorder.AudioSource.MIC)) }
+    var showAudioSourceMenu by remember { mutableStateOf(false) }
 
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
-    // Slider stores Float for UI, converts to Int for Prefs
-    var noiseGate by remember { mutableStateOf(prefs.getInt("noise_gate_threshold", 100).toFloat()) }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings", fontWeight = FontWeight.Bold) },
-                // REMOVED: navigationIcon block (Back Arrow)
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(16.dp)
-        ) {
-
-            // --- CONNECTION SECTION ---
-            SectionHeader("Connection")
-
-            SettingsCard {
-                // Port Setting
-                SettingsItem(
-                    icon = Icons.Outlined.Router,
-                    title = "Server Port",
-                    subtitle = port,
-                    onClick = { showPortDialog = true }
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
+//... existing UI code
             // --- AUDIO QUALITY SECTION ---
             SectionHeader("Audio Quality")
 
@@ -135,9 +113,54 @@ fun SettingsScreen(
                         }
                     }
                 }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                // Audio Source Setting
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    SettingsItem(
+                        icon = Icons.Outlined.SettingsVoice,
+                        title = "Mic Source",
+                        subtitle = audioSourceMap[audioSource] ?: "Unknown",
+                        onClick = { showAudioSourceMenu = true }
+                    )
+
+                    Box(modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 16.dp)
+                    ) {
+                        DropdownMenu(
+                            expanded = showAudioSourceMenu,
+                            onDismissRequest = { showAudioSourceMenu = false },
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 8.dp
+                        ) {
+                            audioSourceMap.forEach { (key, value) ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = value,
+                                            fontWeight = if (audioSource == key) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    onClick = {
+                                        audioSource = key
+                                        prefs.edit().putInt("audio_source", key).apply()
+                                        showAudioSourceMenu = false
+                                    },
+                                    colors = MenuDefaults.itemColors(
+                                        textColor = if (audioSource == key) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
+//... rest of the file
 
             // --- NOISE PROCESSING SECTION ---
             SectionHeader("Noise Processing")
