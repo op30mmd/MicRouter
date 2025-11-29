@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.preference.PreferenceManager
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,6 +33,10 @@ fun SettingsScreen(
     val context = LocalContext.current
     val prefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
     val scrollState = rememberScrollState()
+
+    // --- SNACKBAR STATE ---
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     // --- STATE VARIABLES ---
     var port by remember { mutableStateOf(prefs.getString("server_port", "6000") ?: "6000") }
@@ -53,29 +58,30 @@ fun SettingsScreen(
 
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
-    // --- MAIN LAYOUT ---
-    Column(
+    // --- ROOT BOX (Required for Snackbar Overlay) ---
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            // REMOVED: .statusBarsPadding() <--- THIS WAS THE CAUSE OF THE BIG MARGIN
     ) {
-        // --- HEADER ---
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(16.dp)
-        )
-
         // --- SCROLLABLE CONTENT ---
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp)
+                .padding(16.dp),
+            // FIX 1: Center the header (and everything else) horizontally
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // --- HEADER ---
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             // --- CONNECTION SECTION ---
             SectionHeader("Connection")
@@ -116,6 +122,8 @@ fun SettingsScreen(
                                         sampleRate = rate
                                         prefs.edit().putString("sample_rate", rate).apply()
                                         showSampleRateMenu = false
+                                        // FIX 2: Trigger Snackbar
+                                        scope.launch { snackbarHostState.showSnackbar("Restart server to apply changes") }
                                     }
                                 )
                             }
@@ -148,6 +156,8 @@ fun SettingsScreen(
                                         audioSource = key
                                         prefs.edit().putInt("audio_source", key).apply()
                                         showAudioSourceMenu = false
+                                        // FIX 2: Trigger Snackbar
+                                        scope.launch { snackbarHostState.showSnackbar("Restart server to apply changes") }
                                     }
                                 )
                             }
@@ -188,6 +198,14 @@ fun SettingsScreen(
             
             Spacer(modifier = Modifier.height(32.dp))
         }
+
+        // --- SNACKBAR HOST (Overlay) ---
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+        )
     }
 
     // --- DIALOGS ---
@@ -223,12 +241,15 @@ fun SettingsScreen(
 
 @Composable
 fun SectionHeader(text: String) {
-    Text(
-        text = text,
-        color = MaterialTheme.colorScheme.primary,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
-    )
+    // Re-align text to start since parent is centered
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+        )
+    }
 }
 
 @Composable
