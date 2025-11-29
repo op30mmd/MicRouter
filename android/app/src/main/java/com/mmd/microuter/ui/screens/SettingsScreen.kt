@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.launch
@@ -58,27 +59,27 @@ fun SettingsScreen(
 
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
-    // --- ROOT BOX (Required for Snackbar Overlay) ---
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // --- SCROLLABLE CONTENT ---
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
-                .padding(16.dp),
-            // FIX 1: Center the header (and everything else) horizontally
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(16.dp)
+            // REMOVED: horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // --- HEADER ---
+            // --- HEADER (Centered individually) ---
             Text(
                 text = "Settings",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
+                color = MaterialTheme.colorScheme.onBackground,
+                // FIX: Center only this text
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -122,7 +123,6 @@ fun SettingsScreen(
                                         sampleRate = rate
                                         prefs.edit().putString("sample_rate", rate).apply()
                                         showSampleRateMenu = false
-                                        // FIX 2: Trigger Snackbar
                                         scope.launch { snackbarHostState.showSnackbar("Restart server to apply changes") }
                                     }
                                 )
@@ -156,7 +156,6 @@ fun SettingsScreen(
                                         audioSource = key
                                         prefs.edit().putInt("audio_source", key).apply()
                                         showAudioSourceMenu = false
-                                        // FIX 2: Trigger Snackbar
                                         scope.launch { snackbarHostState.showSnackbar("Restart server to apply changes") }
                                     }
                                 )
@@ -199,7 +198,6 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(32.dp))
         }
 
-        // --- SNACKBAR HOST (Overlay) ---
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
@@ -241,15 +239,16 @@ fun SettingsScreen(
 
 @Composable
 fun SectionHeader(text: String) {
-    // Re-align text to start since parent is centered
-    Row(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = text,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
-        )
-    }
+    // FIX: Simplified. No extra Row needed. Column is default start-aligned.
+    Text(
+        text = text,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 8.dp, bottom = 8.dp),
+        textAlign = TextAlign.Start
+    )
 }
 
 @Composable
