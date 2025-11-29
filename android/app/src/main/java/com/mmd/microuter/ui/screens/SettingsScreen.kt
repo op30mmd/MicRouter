@@ -1,8 +1,8 @@
 package com.mmd.microuter.ui.screens
 
 import android.media.MediaRecorder
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -28,6 +28,7 @@ import androidx.preference.PreferenceManager
 @Composable
 fun SettingsScreen(
     onOpenDebug: () -> Unit = {}
+    // REMOVED: onBackClick (You didn't want the button)
 ) {
     val context = LocalContext.current
     val prefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
@@ -53,30 +54,29 @@ fun SettingsScreen(
 
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
-    Scaffold(
-        // FIX 1: Remove "Safe Area" calculation so Scaffold draws behind status bar
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                ),
-                // FIX 2: Tell AppBar to handle status bar padding internally
-                windowInsets = WindowInsets.statusBars
-            )
-        }
-    ) { padding ->
+    // --- MAIN LAYOUT (No Scaffold) ---
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding() // Only pad the top for the status bar
+    ) {
+        // --- HEADER (Matches Home Screen Style) ---
+        Text(
+            text = "Settings",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(16.dp)
+        )
+
+        // --- SCROLLABLE CONTENT ---
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                // THIS IS THE FIX: consume the insets so they don't apply double padding
-                .consumeWindowInsets(padding)
-                // Apply the scaffold's calculated padding (Status bar + TopBar + Nav Bar)
-                .padding(padding)
                 .verticalScroll(scrollState)
-                .padding(16.dp)
-                .navigationBarsPadding() // FIX 3: Prevent content from hiding behind nav bar
+                .padding(horizontal = 16.dp)
+                // Note: We DO NOT add navigationBarsPadding() here because MainScreen handles it.
         ) {
 
             // --- CONNECTION SECTION ---
