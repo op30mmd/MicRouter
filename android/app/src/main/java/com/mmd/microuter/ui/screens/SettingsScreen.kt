@@ -28,7 +28,6 @@ import androidx.preference.PreferenceManager
 @Composable
 fun SettingsScreen(
     onOpenDebug: () -> Unit = {}
-    // REMOVED: onBackClick (You didn't want the button)
 ) {
     val context = LocalContext.current
     val prefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
@@ -54,14 +53,14 @@ fun SettingsScreen(
 
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
-    // --- MAIN LAYOUT (No Scaffold) ---
+    // --- MAIN LAYOUT ---
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding() // Only pad the top for the status bar
+            // REMOVED: .statusBarsPadding() <--- THIS WAS THE CAUSE OF THE BIG MARGIN
     ) {
-        // --- HEADER (Matches Home Screen Style) ---
+        // --- HEADER ---
         Text(
             text = "Settings",
             style = MaterialTheme.typography.headlineMedium,
@@ -76,7 +75,6 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .verticalScroll(scrollState)
                 .padding(horizontal = 16.dp)
-                // Note: We DO NOT add navigationBarsPadding() here because MainScreen handles it.
         ) {
 
             // --- CONNECTION SECTION ---
