@@ -28,7 +28,6 @@ import androidx.preference.PreferenceManager
 @Composable
 fun SettingsScreen(
     onOpenDebug: () -> Unit = {}
-    // REMOVED: onBackClick parameter
 ) {
     val context = LocalContext.current
     val prefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
@@ -60,7 +59,6 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
-                // REMOVED: navigationIcon block (The Back Button)
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 ),
@@ -71,8 +69,11 @@ fun SettingsScreen(
     ) { padding ->
         Column(
             modifier = Modifier
-                .padding(padding)
                 .fillMaxSize()
+                // THIS IS THE FIX: consume the insets so they don't apply double padding
+                .consumeWindowInsets(padding)
+                // Apply the scaffold's calculated padding (Status bar + TopBar + Nav Bar)
+                .padding(padding)
                 .verticalScroll(scrollState)
                 .padding(16.dp)
                 .navigationBarsPadding() // FIX 3: Prevent content from hiding behind nav bar
@@ -172,7 +173,6 @@ fun SettingsScreen(
                         prefs.edit().putBoolean("enable_hw_suppressor", it).apply()
                     }
                 )
-                // REMOVED: Noise Gate Slider Logic completely
             }
 
             Spacer(modifier = Modifier.height(24.dp))
