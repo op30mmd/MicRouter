@@ -1,8 +1,8 @@
 package com.mmd.microuter.ui.screens
 
 import android.media.MediaRecorder
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -54,12 +54,16 @@ fun SettingsScreen(
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
     Scaffold(
+        // FIX 1: Remove "Safe Area" calculation so Scaffold draws behind status bar
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
-                )
+                ),
+                // FIX 2: Tell AppBar to handle status bar padding internally
+                windowInsets = WindowInsets.statusBars
             )
         }
     ) { padding ->
@@ -72,6 +76,7 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(scrollState)
                 .padding(16.dp)
+                .navigationBarsPadding() // FIX 3: Prevent content from hiding behind nav bar
         ) {
 
             // --- CONNECTION SECTION ---
