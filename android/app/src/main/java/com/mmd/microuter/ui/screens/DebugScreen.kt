@@ -23,10 +23,6 @@ import androidx.compose.ui.unit.sp
 import com.mmd.microuter.utils.AppLogger
 import com.mmd.microuter.utils.LogLevel
 
-// Fixed imports for WindowInsets/systemBars which were mistakenly placed inside the function
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.systemBars
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DebugScreen(onBackClick: () -> Unit) {
@@ -34,6 +30,7 @@ fun DebugScreen(onBackClick: () -> Unit) {
     val clipboardManager = LocalClipboardManager.current
 
     Scaffold(
+        containerColor = Color(0xFF0F0F0F), // Background for the whole screen (including status bar)
         topBar = {
             TopAppBar(
                 title = { Text("Debug Console", fontSize = 18.sp) },
@@ -56,17 +53,19 @@ fun DebugScreen(onBackClick: () -> Unit) {
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = Color.Transparent, // Transparent so Scaffold color shows through
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
                 )
             )
-        },
-        contentWindowInsets = WindowInsets.systemBars
+        }
     ) { padding ->
         Column(
             modifier = Modifier
-                .padding(padding)
+                .padding(padding) // Apply safe area padding
+                .consumeWindowInsets(padding)
                 .fillMaxSize()
-                .background(Color(0xFF0F0F0F)) // Terminal Black
         ) {
             SelectionContainer {
                 LazyColumn(
