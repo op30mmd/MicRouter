@@ -21,18 +21,23 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.preference.PreferenceManager
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onOpenDebug: () -> Unit = {}
-    // REMOVED: onBackClick (You didn't want the button)
 ) {
     val context = LocalContext.current
     val prefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
     val scrollState = rememberScrollState()
+
+    // --- SNACKBAR STATE ---
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     // --- STATE VARIABLES ---
     var port by remember { mutableStateOf(prefs.getString("server_port", "6000") ?: "6000") }
@@ -54,30 +59,30 @@ fun SettingsScreen(
 
     var hwSuppressor by remember { mutableStateOf(prefs.getBoolean("enable_hw_suppressor", true)) }
 
-    // --- MAIN LAYOUT (No Scaffold) ---
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding() // Only pad the top for the status bar
     ) {
-        // --- HEADER (Matches Home Screen Style) ---
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(16.dp)
-        )
-
-        // --- SCROLLABLE CONTENT ---
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp)
-                // Note: We DO NOT add navigationBarsPadding() here because MainScreen handles it.
+                .padding(16.dp)
+            // REMOVED: horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // --- HEADER (Centered individually) ---
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
+                // FIX: Center only this text
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             // --- CONNECTION SECTION ---
             SectionHeader("Connection")
@@ -118,6 +123,7 @@ fun SettingsScreen(
                                         sampleRate = rate
                                         prefs.edit().putString("sample_rate", rate).apply()
                                         showSampleRateMenu = false
+                                        scope.launch { snackbarHostState.showSnackbar("Restart server to apply changes") }
                                     }
                                 )
                             }
@@ -150,6 +156,7 @@ fun SettingsScreen(
                                         audioSource = key
                                         prefs.edit().putInt("audio_source", key).apply()
                                         showAudioSourceMenu = false
+                                        scope.launch { snackbarHostState.showSnackbar("Restart server to apply changes") }
                                     }
                                 )
                             }
@@ -190,6 +197,13 @@ fun SettingsScreen(
             
             Spacer(modifier = Modifier.height(32.dp))
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+        )
     }
 
     // --- DIALOGS ---
@@ -225,11 +239,15 @@ fun SettingsScreen(
 
 @Composable
 fun SectionHeader(text: String) {
+    // FIX: Simplified. No extra Row needed. Column is default start-aligned.
     Text(
         text = text,
         color = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 8.dp, bottom = 8.dp),
+        textAlign = TextAlign.Start
     )
 }
 

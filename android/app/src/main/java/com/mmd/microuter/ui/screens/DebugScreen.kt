@@ -29,14 +29,13 @@ fun DebugScreen(onBackClick: () -> Unit) {
     val logs by AppLogger.logs.collectAsState()
     val clipboardManager = LocalClipboardManager.current
 
-    // FIX: Use Column instead of Scaffold to avoid double-padding glitches
+    // FIX: Removed .statusBarsPadding() to fix double margin
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0F0F0F)) // Dark terminal background
-            .statusBarsPadding() // Moves content down below system clock
+            .background(Color(0xFF0F0F0F))
     ) {
-        // --- CUSTOM HEADER (Mimics TopAppBar but safer) ---
+        // --- CUSTOM HEADER ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
