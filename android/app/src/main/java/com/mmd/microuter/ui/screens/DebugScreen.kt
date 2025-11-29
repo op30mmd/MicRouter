@@ -6,12 +6,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -29,85 +29,77 @@ fun DebugScreen(onBackClick: () -> Unit) {
     val logs by AppLogger.logs.collectAsState()
     val clipboardManager = LocalClipboardManager.current
 
-    Scaffold(
-        containerColor = Color(0xFF0F0F0F), // Background for the whole screen (including status bar)
-        topBar = {
-            TopAppBar(
-                title = { Text("Debug Console", fontSize = 18.sp) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = {
-                        val logText = logs.joinToString("\n") { log ->
-                            "${log.timestamp} [${log.tag}] ${log.message}"
-                        }
-                        clipboardManager.setText(AnnotatedString(logText))
-                    }) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy All")
-                    }
-                    IconButton(onClick = { AppLogger.clear() }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Clear")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent, // Transparent so Scaffold color shows through
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
-                    actionIconContentColor = Color.White
-                )
-            )
-        }
-    ) { padding ->
-        Column(
+    // FIX: Use Column instead of Scaffold to avoid double-padding glitches
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F0F0F)) // Dark terminal background
+            .statusBarsPadding() // Moves content down below system clock
+    ) {
+        // --- CUSTOM HEADER (Mimics TopAppBar but safer) ---
+        Row(
             modifier = Modifier
-                .padding(padding) // Apply safe area padding
-                .consumeWindowInsets(padding)
-                .fillMaxSize()
+                .fillMaxWidth()
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            SelectionContainer {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(8.dp),
-                    reverseLayout = true
-                ) {
-                    items(logs) { log ->
-                        Row(modifier = Modifier.padding(vertical = 4.dp)) {
-                            // Timestamp
-                            Text(
-                                text = log.timestamp,
-                                color = Color.Gray,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                modifier = Modifier.width(60.dp)
-                            )
+            IconButton(onClick = onBackClick) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+            }
+            Text(
+                "Debug Console",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                modifier = Modifier.weight(1f).padding(start = 8.dp)
+            )
+            IconButton(onClick = {
+                val logText = logs.joinToString("\n") { log -> "${log.timestamp} [${log.tag}] ${log.message}" }
+                clipboardManager.setText(AnnotatedString(logText))
+            }) {
+                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = Color.White)
+            }
+            IconButton(onClick = { AppLogger.clear() }) {
+                Icon(Icons.Default.Delete, contentDescription = "Clear", tint = Color.White)
+            }
+        }
 
-                            // Tag
-                            Text(
-                                text = "[${log.tag}] ",
-                                color = MaterialTheme.colorScheme.primary,
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            // Message
-                            Text(
-                                text = log.message,
-                                color = when (log.level) {
-                                    LogLevel.ERROR -> Color(0xFFFF5252) // Red
-                                    LogLevel.WARN -> Color(0xFFFFD740)  // Yellow
-                                    else -> Color(0xFFEEEEEE)           // White
-                                },
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.3f))
+        // --- CONTENT ---
+        SelectionContainer {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+                reverseLayout = true
+            ) {
+                items(logs) { log ->
+                    Row(modifier = Modifier.padding(vertical = 4.dp)) {
+                        Text(
+                            text = log.timestamp,
+                            color = Color.Gray,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.width(60.dp)
+                        )
+                        Text(
+                            text = "[${log.tag}] ",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = log.message,
+                            color = when (log.level) {
+                                LogLevel.ERROR -> Color(0xFFFF5252)
+                                LogLevel.WARN -> Color(0xFFFFD740)
+                                else -> Color(0xFFEEEEEE)
+                            },
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
                     }
+                    HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.3f))
                 }
             }
         }
