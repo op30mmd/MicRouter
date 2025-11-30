@@ -18,7 +18,12 @@ class BackendServer:
     def __init__(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind(('127.0.0.1', FLUTTER_PORT))
+        try:
+            self.server_socket.bind(('127.0.0.1', FLUTTER_PORT))
+        except OSError:
+            print(f"[!] Port {FLUTTER_PORT} is busy. Is the app already running?")
+            os._exit(1)
+
         self.server_socket.listen(1)
         
         self.client_socket = None
@@ -60,20 +65,49 @@ class BackendServer:
             self.cleanup()
 
     def _scan_devices(self):
+        """
+        Scans output devices.
+        Improvement: Prioritizes Windows WASAPI (Low Latency) if available.
+        """
         self.device_map = {}
+        info = self.p.get_host_api_info_by_index(0)
+        num_devices = info.get("deviceCount")
+
+        # Helper to find WASAPI host API index on Windows
+        wasapi_index = -1
         try:
-            info = self.p.get_host_api_info_by_index(0)
-            num_devices = info.get("deviceCount")
-            for i in range(num_devices):
-                device_info = self.p.get_device_info_by_host_api_device_index(0, i)
-                if device_info.get("maxOutputChannels") > 0:
-                    name = device_info.get("name")
-                    self.device_map[name] = i
-        except Exception: pass
+            for i in range(self.p.get_host_api_count()):
+                api = self.p.get_host_api_info_by_index(i)
+                if "WASAPI" in api.get("name", ""):
+                    wasapi_index = i
+                    break
+        except: pass
+
+        for i in range(num_devices):
+            try:
+                dev = self.p.get_device_info_by_host_api_device_index(0, i)
+                if dev.get("maxOutputChannels") > 0:
+                    name = dev.get("name")
+
+                    # If on Windows and we found a generic driver, try to find its WASAPI counterpart
+                    target_index = i
+                    if wasapi_index != -1:
+                        # Scan for the same device name under WASAPI
+                        for j in range(info.get("deviceCount") * 2): # Heuristic search
+                            try:
+                                w_dev = self.p.get_device_info_by_index(j)
+                                if w_dev["hostApi"] == wasapi_index and w_dev["name"] in name:
+                                    target_index = j
+                                    break
+                            except: continue
+
+                    self.device_map[name] = target_index
+            except: pass
 
     def send_to_flutter(self, data_dict):
         if self.client_socket:
             try:
+                # Append newline to ensure Flutter's LineSplitter catches it
                 message = json.dumps(data_dict) + "\n"
                 self.client_socket.sendall(message.encode('utf-8'))
             except:
@@ -134,6 +168,10 @@ class BackendServer:
     def setup_adb(self, port):
         self.send_to_flutter({"type": "log", "message": "[*] Setting up ADB..."})
         try:
+            # Remove old rules first to be clean
+            subprocess.run(["adb", "forward", "--remove", f"tcp:{port}"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
             subprocess.run(["adb", "forward", f"tcp:{port}", f"tcp:{port}"], 
                          check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             return True
@@ -142,7 +180,7 @@ class BackendServer:
             return False
 
     def _recv_exact(self, sock, n):
-        """Receive exactly n bytes from socket"""
+        """Receive exactly n bytes from socket with timeout handling"""
         data = b''
         while len(data) < n:
             try:
@@ -178,7 +216,7 @@ class BackendServer:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-                    # --- ADD THIS: Reduce Receive Buffer to ~4 packets ---
+                    # --- OPTIMIZATION 1: Small TCP Buffer to prevent lag ---
                     sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
 
                     sock.settimeout(2)
@@ -204,72 +242,61 @@ class BackendServer:
 
             # ========== HANDSHAKE PROTOCOL ==========
             
-            # Step 1: Receive sample rate (4 bytes, big-endian signed int)
+            # Step 1: Receive sample rate
             header = self._recv_exact(sock, 4)
-            if not header or len(header) < 4:
-                raise Exception("Phone disconnected during handshake (sample rate).")
-            
+            if not header: raise Exception("Handshake failed (Sample Rate)")
             sample_rate = struct.unpack('>i', header)[0]
             
             if sample_rate <= 0 or sample_rate > 192000:
-                raise Exception(f"Invalid sample rate received: {sample_rate}")
+                raise Exception(f"Invalid sample rate: {sample_rate}")
             
             self.send_to_flutter({"type": "log", "message": f"[*] Sample Rate: {sample_rate} Hz"})
 
-            # Step 2: Send acknowledgment (echo the sample rate back)
+            # Step 2: Send acknowledgment
             sock.sendall(struct.pack('>i', sample_rate))
-            self.send_to_flutter({"type": "log", "message": "[*] Sent acknowledgment..."})
 
-            # Step 3: Wait for READY signal (0x52454459 = "REDY")
+            # Step 3: Wait for READY signal
             ready_bytes = self._recv_exact(sock, 4)
-            if not ready_bytes or len(ready_bytes) < 4:
-                raise Exception("Phone disconnected during handshake (ready signal).")
-            
+            if not ready_bytes: raise Exception("Handshake failed (Ready Signal)")
             ready_signal = struct.unpack('>i', ready_bytes)[0]
             
-            if ready_signal != 0x52454459:
+            if ready_signal != 0x52454459: # "REDY"
                 raise Exception(f"Invalid ready signal: {hex(ready_signal)}")
             
             self.send_to_flutter({"type": "log", "message": "[*] Handshake complete!"})
             
             # ========== END HANDSHAKE ==========
 
-            # Remove timeout for streaming (or set a longer one)
-            sock.settimeout(10)
-
             # --- AUDIO DEVICE SETUP ---
             device_index = self.device_map.get(device_name)
             if device_index is None:
                 device_index = self.p.get_default_output_device_info()["index"]
 
+            # --- OPTIMIZATION 2: Match buffer size to Android (10ms = 480 frames at 48k) ---
             stream = self.p.open(
                 format=pyaudio.paInt16,
                 channels=1,
                 rate=sample_rate,
                 output=True,
                 output_device_index=device_index,
-                frames_per_buffer=480  # <--- CHANGED FROM 2048
+                frames_per_buffer=480
             )
 
             self.send_to_flutter({"type": "status", "payload": "running"})
+
+            # --- OPTIMIZATION 3: Flush Startup Lag ---
+            # Drain any data that arrived while opening speakers to ensure we start "now"
+            sock.settimeout(0.0) # Non-blocking
+            try:
+                while True:
+                    if not sock.recv(4096): break
+            except BlockingIOError: pass
+            except Exception: pass
+            sock.settimeout(10.0) # Restore blocking
+
             self.send_to_flutter({"type": "log", "message": "[*] Streaming audio..."})
 
-            # --- ADD THIS: Flush the socket to remove startup latency ---
-            try:
-                sock.setblocking(0) # Non-blocking mode
-                while True:
-                    # Dump everything currently in the buffer
-                    junk = sock.recv(4096)
-                    if not junk: break
-            except BlockingIOError:
-                pass # Buffer is empty, we are now "live"
-            except Exception:
-                pass
-            finally:
-                sock.setblocking(1) # Back to blocking mode
-            # -----------------------------------------------------------
-
-            # --- STREAM LOOP (with length-prefixed packets) ---
+            # --- STREAM LOOP ---
             consecutive_errors = 0
             max_consecutive_errors = 5
             
@@ -283,54 +310,47 @@ class BackendServer:
                     
                     length = struct.unpack('>i', length_bytes)[0]
                     
-                    # Validate length
+                    # Validate length (Max 64KB safety check)
                     if length <= 0 or length > 65536:
                         consecutive_errors += 1
-                        self.send_to_flutter({"type": "log", "message": f"[!] Invalid packet length: {length}"})
-                        if consecutive_errors >= max_consecutive_errors:
-                            raise Exception("Too many invalid packets")
+                        if consecutive_errors >= max_consecutive_errors: break
                         continue
                     
                     # Read audio data
                     data = self._recv_exact(sock, length)
-                    if not data:
-                        self.send_to_flutter({"type": "log", "message": "[*] Connection closed during data read"})
-                        break
+                    if not data: break
                     
-                    consecutive_errors = 0  # Reset on success
+                    consecutive_errors = 0
                     
-                    # --- RNNOISE INTEGRATION ---
+                    # --- PROCESS ---
                     final_data = data
                     
                     if self.use_rnnoise and self.rnnoise:
                         try:
+                            # RNNoise optimization handled inside denoiser.py
                             processed = self.rnnoise.process(data)
-                            if processed:
-                                final_data = processed
-                            else:
-                                continue 
-                        except Exception as e:
-                            print(f"RNNoise fail: {e}")
+                            if processed: final_data = processed
+                            else: continue
+                        except Exception: pass
 
-                    # --- GAIN & PLAYBACK ---
-                    audio_data = np.frombuffer(final_data, dtype=np.int16)
+                    # --- GAIN & VISUALIZER ---
+                    audio_array = np.frombuffer(final_data, dtype=np.int16)
                     
                     if self.current_gain != 1.0:
-                        audio_data = np.clip(audio_data * self.current_gain, -32768, 32767).astype(np.int16)
-                        final_data = audio_data.tobytes()
+                        audio_array = np.clip(audio_array * self.current_gain, -32768, 32767).astype(np.int16)
+                        final_data = audio_array.tobytes()
 
-                    # Send volume to Flutter
-                    if len(audio_data) > 0:
-                        rms = np.sqrt(np.mean(audio_data.astype(float)**2))
+                    # Send RMS to UI (Throttle to avoid flooding socket)
+                    if len(audio_array) > 0 and int(time.time() * 10) % 2 == 0:
+                        rms = np.sqrt(np.mean(audio_array.astype(float)**2))
                         self.send_to_flutter({"type": "volume", "value": min(rms / 2000, 1.0)})
                     
                     stream.write(final_data)
                     
                 except socket.timeout:
-                    self.send_to_flutter({"type": "log", "message": "[!] Read timeout, checking connection..."})
+                    self.send_to_flutter({"type": "log", "message": "[!] Read timeout..."})
                     consecutive_errors += 1
-                    if consecutive_errors >= max_consecutive_errors:
-                        raise Exception("Connection timeout")
+                    if consecutive_errors >= max_consecutive_errors: break
                     continue
 
         except Exception as e:
@@ -342,8 +362,7 @@ class BackendServer:
                     stream.close()
                 except: pass
             if sock: 
-                try:
-                    sock.close()
+                try: sock.close()
                 except: pass
             
             self.is_streaming = False
