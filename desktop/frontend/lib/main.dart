@@ -13,47 +13,54 @@ void main() {
   );
 }
 
+// --- CONTROLLER ---
 class BackendController extends ChangeNotifier {
   Socket? _socket;
   Process? _pythonProcess;
   String status = "Initializing...";
-  double currentVolume = 0.0; // Visualizer value (0.0 - 1.0)
-  double gainValue = 1.0;     // Slider value (1.0 - 5.0)
-  bool isAiEnabled = false;
 
+  // Data State
+  double currentVolume = 0.0;
+  double gainValue = 1.0;
+  bool isAiEnabled = false;
   List<String> logs = [];
   List<String> devices = [];
   String? selectedDevice;
+
+  // TCP Buffer for fragmented packets
+  String _socketBuffer = "";
 
   BackendController() {
     _startEmbeddedBackend();
   }
 
   void _startEmbeddedBackend() async {
+    // Locate the backend script relative to the executable
     String exePath = Platform.resolvedExecutable;
     String dir = File(exePath).parent.path;
     String scriptPath = p.join(dir, 'backend', 'backend.py');
 
-    logs.add("Looking for script at: $scriptPath");
-    notifyListeners();
+    _log("Looking for script at: $scriptPath");
 
+    // Check if script exists (Release mode vs Debug mode adjustments might be needed)
     if (await File(scriptPath).exists()) {
       try {
         _pythonProcess = await Process.start('python', [scriptPath]);
-        logs.add("Python backend started.");
+        _log("Python backend started.");
 
+        // Listen to Python's STDERR for debugging
         _pythonProcess!.stderr.transform(utf8.decoder).listen((data) {
              print("PY_ERR: $data");
-             logs.add("PY_ERR: $data");
-             notifyListeners();
+             // Optional: Don't show every stderr in UI logs to keep it clean
         });
       } catch (e) {
-        logs.add("Failed to launch python: $e");
+        _log("Failed to launch python: $e");
       }
     } else {
-      logs.add("backend.py not found (Dev mode?)");
+      _log("backend.py not found. Assuming external/dev backend.");
     }
 
+    // Give it a moment to bind the port
     await Future.delayed(const Duration(seconds: 1));
     connectToPython();
   }
@@ -70,31 +77,52 @@ class BackendController extends ChangeNotifier {
       _socket = await Socket.connect('127.0.0.1', 5000);
       status = "Connected to Engine";
       notifyListeners();
+
+      // Request initial state
       sendCommand("get_devices");
 
       _socket!.cast<List<int>>().transform(utf8.decoder).listen(
-        (data) {
-          for (var line in data.split('\n')) {
-            if (line.trim().isNotEmpty) {
-              try {
-                _handleMessage(jsonDecode(line));
-              } catch (e) { /* ignore partial packets */ }
-            }
-          }
-        },
+        _onDataReceived,
         onDone: () {
           status = "Backend Disconnected";
+          _socket = null;
           notifyListeners();
+          _reconnect();
         },
         onError: (e) {
           status = "Connection Error";
+          _socket = null;
           notifyListeners();
+          _reconnect();
         },
       );
     } catch (e) {
       status = "Waiting for Backend...";
-      Future.delayed(const Duration(seconds: 2), connectToPython);
       notifyListeners();
+      _reconnect();
+    }
+  }
+
+  void _reconnect() {
+    Future.delayed(const Duration(seconds: 2), connectToPython);
+  }
+
+  // --- CRITICAL FIX: Handle Fragmented TCP Packets ---
+  void _onDataReceived(String data) {
+    _socketBuffer += data;
+
+    while (_socketBuffer.contains('\n')) {
+      int index = _socketBuffer.indexOf('\n');
+      String line = _socketBuffer.substring(0, index).trim();
+      _socketBuffer = _socketBuffer.substring(index + 1);
+
+      if (line.isNotEmpty) {
+        try {
+          _handleMessage(jsonDecode(line));
+        } catch (e) {
+          print("JSON Error: $e | Line: $line");
+        }
+      }
     }
   }
 
@@ -104,21 +132,30 @@ class BackendController extends ChangeNotifier {
         status = msg['payload'];
         break;
       case 'volume':
-        // Visualizer update
         currentVolume = (msg['value'] as num).toDouble();
         break;
       case 'log':
-        logs.add(msg['message']);
+        _log(msg['message']);
         break;
       case 'error':
-        logs.add("ERROR: ${msg['message']}");
+        _log("ERROR: ${msg['message']}");
         break;
       case 'devices':
         devices = List<String>.from(msg['payload']);
+        // Auto-select first device if none selected
         if (devices.isNotEmpty && selectedDevice == null) {
           selectedDevice = devices.first;
         }
         break;
+    }
+    notifyListeners();
+  }
+
+  void _log(String message) {
+    logs.add(message);
+    // Limit log size to prevent memory issues
+    if (logs.length > 200) {
+      logs.removeAt(0);
     }
     notifyListeners();
   }
@@ -134,8 +171,7 @@ class BackendController extends ChangeNotifier {
     if (selectedDevice != null) {
       sendCommand('start', {'device_name': selectedDevice, 'port': 6000});
     } else {
-      logs.add("ERROR: No output device selected!");
-      notifyListeners();
+      _log("ERROR: No output device selected!");
     }
   }
 
@@ -150,7 +186,6 @@ class BackendController extends ChangeNotifier {
 
   void setGain(double val) {
     gainValue = val;
-    // Send command to python to update multiplier
     sendCommand('set_gain', {'value': val});
     notifyListeners();
   }
@@ -159,6 +194,10 @@ class BackendController extends ChangeNotifier {
     isAiEnabled = value;
     sendCommand("toggle_rnnoise", {"value": value});
     notifyListeners();
+  }
+
+  void refreshDevices() {
+    sendCommand("get_devices");
   }
 }
 
@@ -172,10 +211,11 @@ class MyApp extends StatelessWidget {
       title: 'MicRouter PC',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(useMaterial3: true).copyWith(
+        scaffoldBackgroundColor: Colors.grey[900],
         colorScheme: ColorScheme.dark(
           primary: Colors.cyanAccent,
           secondary: Colors.purpleAccent,
-          surface: Colors.grey[900]!,
+          surface: Colors.grey[850]!,
         ),
       ),
       home: const HomeScreen(),
@@ -183,105 +223,326 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _selectedIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Row(
+        children: [
+          // --- NAVIGATION RAIL ---
+          NavigationRail(
+            selectedIndex: _selectedIndex,
+            backgroundColor: Colors.black26,
+            labelType: NavigationRailLabelType.all,
+            onDestinationSelected: (int index) {
+              setState(() {
+                _selectedIndex = index;
+              });
+            },
+            destinations: const [
+              NavigationRailDestination(
+                icon: Icon(Icons.mic_none_outlined),
+                selectedIcon: Icon(Icons.mic),
+                label: Text('Router'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: Text('Settings'),
+              ),
+            ],
+          ),
+          const VerticalDivider(thickness: 1, width: 1, color: Colors.white10),
+
+          // --- MAIN CONTENT AREA ---
+          Expanded(
+            child: _selectedIndex == 0
+                ? const RouterView()
+                : const SettingsView(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- VIEW 1: ROUTER DASHBOARD ---
+class RouterView extends StatefulWidget {
+  const RouterView({super.key});
+
+  @override
+  State<RouterView> createState() => _RouterViewState();
+}
+
+class _RouterViewState extends State<RouterView> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<BackendController>();
 
-    return Scaffold(
-      body: Row(
-        children: [
-          // Sidebar
-          NavigationRail(
-            selectedIndex: 0,
-            backgroundColor: Colors.black26,
-            destinations: const [
-              NavigationRailDestination(icon: Icon(Icons.mic), label: Text('Router')),
-              NavigationRailDestination(icon: Icon(Icons.settings), label: Text('Settings')),
-            ],
-            onDestinationSelected: (int index) {},
-          ),
-          const VerticalDivider(thickness: 1, width: 1, color: Colors.white10),
+    // Auto-scroll logs
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      }
+    });
 
-          // Main Content
-          Expanded(
+    return Padding(
+      padding: const EdgeInsets.all(40.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Dashboard", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 40),
+
+          // 1. Visualizer
+          Center(
+            child: Container(
+              height: 80,
+              width: double.infinity,
+              constraints: const BoxConstraints(maxWidth: 700),
+              decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white12),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))
+                ]
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: controller.currentVolume.clamp(0.0, 1.0),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(colors: [Colors.cyanAccent, Colors.purpleAccent]),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 15),
+
+          // Status Text
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: controller.status.contains("running") ? Colors.green.withOpacity(0.2) : Colors.white10,
+                borderRadius: BorderRadius.circular(20)
+              ),
+              child: Text(
+                "STATUS: ${controller.status.toUpperCase()}",
+                style: TextStyle(
+                  letterSpacing: 1.2,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: controller.status.contains("running") ? Colors.greenAccent : Colors.grey
+                )
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 60),
+
+          // 2. Start/Stop Action Buttons
+          Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                FilledButton.icon(
+                  onPressed: (controller.status == "running" || controller.selectedDevice == null)
+                      ? null
+                      : controller.startStreaming,
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text("START ROUTING"),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 22),
+                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                  ),
+                ),
+                const SizedBox(width: 20),
+                OutlinedButton.icon(
+                  onPressed: controller.status == "running" ? controller.stopStreaming : null,
+                  icon: const Icon(Icons.stop),
+                  label: const Text("STOP"),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 22),
+                    foregroundColor: Colors.redAccent,
+                    side: const BorderSide(color: Colors.redAccent),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const Spacer(),
+          const Divider(color: Colors.white10),
+          const SizedBox(height: 10),
+
+          // 3. Logs Console
+          const Text("System Logs:", style: TextStyle(color: Colors.grey, fontSize: 12)),
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.all(8),
+            height: 120,
+            decoration: BoxDecoration(
+              color: Colors.black87,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white10)
+            ),
+            child: ListView.builder(
+              controller: _scrollController,
+              itemCount: controller.logs.length,
+              itemBuilder: (ctx, i) {
+                return Text(
+                  ">> ${controller.logs[i]}",
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.white70),
+                );
+              },
+            ),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+// --- VIEW 2: SETTINGS PAGE ---
+class SettingsView extends StatelessWidget {
+  const SettingsView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<BackendController>();
+
+    return Padding(
+      padding: const EdgeInsets.all(40.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Audio Settings", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 40),
+
+          // 1. Output Device Selection
+          Card(
+            color: Colors.white.withOpacity(0.05),
             child: Padding(
-              padding: const EdgeInsets.all(40.0),
+              padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Android Mic Router", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 40),
-
-                  // 1. Visualizer
-                  Center(
-                    child: Container(
-                      height: 60,
-                      width: double.infinity,
-                      constraints: const BoxConstraints(maxWidth: 600),
-                      decoration: BoxDecoration(
-                        color: Colors.black45,
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(color: Colors.white12)
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(30),
-                        child: FractionallySizedBox(
-                          alignment: Alignment.centerLeft,
-                          widthFactor: controller.currentVolume,
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              gradient: LinearGradient(colors: [Colors.cyan, Colors.purpleAccent]),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Output Device", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 20),
+                        onPressed: controller.refreshDevices,
+                        tooltip: "Refresh Devices",
+                      )
+                    ],
                   ),
                   const SizedBox(height: 10),
-                  Center(child: Text(controller.status.toUpperCase(), style: const TextStyle(letterSpacing: 1.5, fontSize: 12, color: Colors.grey))),
+                  DropdownButtonFormField<String>(
+                    value: controller.selectedDevice,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      filled: true,
+                      fillColor: Colors.black26
+                    ),
+                    dropdownColor: Colors.grey[850],
+                    isExpanded: true,
+                    hint: const Text("Select a speaker..."),
+                    items: controller.devices.map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value, overflow: TextOverflow.ellipsis),
+                      );
+                    }).toList(),
+                    onChanged: controller.selectDevice,
+                  ),
+                ],
+              ),
+            ),
+          ),
 
-                  const SizedBox(height: 40),
+          const SizedBox(height: 20),
 
-                  // 2. Controls Row
+          // 2. Gain & Effects
+          Card(
+            color: Colors.white.withOpacity(0.05),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  // AI Toggle
                   Row(
                     children: [
-                      // Device Dropdown
-                      Expanded(
-                        flex: 2,
-                        child: DropdownButtonFormField<String>(
-                          value: controller.selectedDevice,
-                          decoration: const InputDecoration(
-                            labelText: "Output Device",
-                            border: OutlineInputBorder(),
-                            filled: true,
-                          ),
-                          isExpanded: true,
-                          items: controller.devices.map((String value) {
-                            return DropdownMenuItem<String>(
-                              value: value,
-                              child: Text(value, overflow: TextOverflow.ellipsis),
-                            );
-                          }).toList(),
-                          onChanged: controller.selectDevice,
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-
-                      // Gain Slider
-                      Expanded(
-                        flex: 2,
+                      const Icon(Icons.auto_awesome, color: Colors.amber),
+                      const SizedBox(width: 15),
+                      const Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Volume Boost: ${controller.gainValue.toStringAsFixed(1)}x"),
+                            Text("AI Noise Cancellation", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                            Text("Reduces background noise using RNNoise", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: controller.isAiEnabled,
+                        onChanged: (val) => controller.toggleAi(val),
+                        activeColor: Colors.amber,
+                      ),
+                    ],
+                  ),
+
+                  const Divider(height: 30, color: Colors.white10),
+
+                  // Gain Slider
+                  Row(
+                    children: [
+                      const Icon(Icons.volume_up, color: Colors.cyanAccent),
+                      const SizedBox(width: 15),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Digital Gain (Boost): ${controller.gainValue.toStringAsFixed(1)}x", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
                             Slider(
                               value: controller.gainValue,
                               min: 1.0,
                               max: 5.0,
                               divisions: 40,
+                              activeColor: Colors.cyanAccent,
                               label: "${controller.gainValue.toStringAsFixed(1)}x",
                               onChanged: (val) => controller.setGain(val),
                             ),
@@ -290,84 +551,6 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-
-                  // ... Gain Slider ...
-                  
-                  const SizedBox(height: 20),
-
-                  // AI TOGGLE ROW
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.black26,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.auto_awesome, color: Colors.amber),
-                        const SizedBox(width: 10),
-                        const Text("AI Noise Cancellation"),
-                        const SizedBox(width: 10),
-                        Switch(
-                          value: controller.isAiEnabled,
-                          onChanged: (val) => controller.toggleAi(val),
-                          activeColor: Colors.amber,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 30),
-                  // ... Start/Stop Buttons ...
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      FilledButton.icon(
-                        onPressed: controller.status.contains("running") ? null : controller.startStreaming,
-                        icon: const Icon(Icons.play_arrow),
-                        label: const Text("START RECEIVING"),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 22),
-                          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
-                        ),
-                      ),
-                      const SizedBox(width: 20),
-                      OutlinedButton.icon(
-                        onPressed: controller.status.contains("running") ? controller.stopStreaming : null,
-                        icon: const Icon(Icons.stop),
-                        label: const Text("STOP"),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 22),
-                          foregroundColor: Colors.redAccent,
-                          side: const BorderSide(color: Colors.redAccent)
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const Spacer(),
-                  const Divider(color: Colors.white10),
-                  const SizedBox(height: 10),
-
-                  // 4. Logs
-                  const Text("Logs:", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  SizedBox(
-                    height: 100,
-                    child: ListView.builder(
-                      reverse: true, // Auto-scroll to bottom
-                      itemCount: controller.logs.length,
-                      itemBuilder: (ctx, i) {
-                        // Reverse index for list view
-                        final logIndex = controller.logs.length - 1 - i;
-                        return Text(
-                          ">> ${controller.logs[logIndex]}",
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.white70),
-                        );
-                      },
-                    ),
-                  )
                 ],
               ),
             ),
