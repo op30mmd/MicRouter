@@ -141,6 +141,15 @@ class BackendServer:
             self.send_to_flutter({"type": "error", "message": f"ADB Error: {e}"})
             return False
 
+    def cleanup_adb(self, port):
+        self.send_to_flutter({"type": "log", "message": "[*] Cleaning up ADB..."})
+        try:
+            subprocess.run(["adb", "forward", "--remove", f"tcp:{port}"],
+                         check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        except Exception as e:
+            # Don't send error to flutter, as it might not be connected
+            print(f"ADB cleanup error: {e}")
+
     def _recv_exact(self, sock, n):
         """Receive exactly n bytes from socket"""
         data = b''
@@ -346,6 +355,7 @@ class BackendServer:
                     sock.close()
                 except: pass
             
+            self.cleanup_adb(port)
             self.is_streaming = False
             self.send_to_flutter({"type": "status", "payload": "stopped"})
             self.send_to_flutter({"type": "volume", "value": 0.0})
