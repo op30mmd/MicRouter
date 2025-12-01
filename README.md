@@ -31,7 +31,7 @@ The communication flow is as follows:
     - **Digital Gain**: Boost the microphone volume from the PC client.
     - **Hardware Noise Suppression**: Utilizes the device's built-in noise suppressor for cleaner audio (if available).
     - **Hardware Echo Cancellation**: Utilizes the device's built-in acoustic echo canceler (if available).
-    - **Software Noise Gate**: A simple noise gate on the Android app silences audio below a certain volume threshold to reduce background noise.
+- **AI Noise Cancellation**: The PC backend uses **RNNoise** (Recurrent Neural Network for Audio Noise Reduction) to eliminate background noise in real-time.
 - **Real-time Monitoring**: The PC client provides a real-time audio visualizer and status updates.
 
 ## Prerequisites
@@ -91,8 +91,8 @@ The Flutter app will launch and automatically connect to the running Python back
 The Android app provides a settings screen where you can configure the following:
 - **Server Port**: The TCP port for the audio stream (default: `6000`).
 - **Sample Rate**: The audio sample rate in Hz (default: `48000`).
+- **Mic Source**: Select the Android audio source (Default, Microphone, Voice Recognition, Voice Communication).
 - **Enable HW Suppressor**: Toggle hardware noise suppression (default: `true`).
-- **Noise Gate Threshold**: The RMS threshold for the software noise gate (default: `100`).
 
 ### PC Backend API
 
@@ -109,3 +109,6 @@ The Python backend communicates with the Flutter frontend via JSON commands on p
 
 - **`{"command": "set_gain", "value": 1.5}`**:
   Sets the digital gain (volume multiplier).
+
+- **`{"command": "toggle_rnnoise", "value": true}`**:
+  Enables or disables the AI noise cancellation (RNNoise).
