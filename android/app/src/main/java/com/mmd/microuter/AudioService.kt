@@ -36,22 +36,17 @@ class AudioService : Service() {
     private var serverSocket: ServerSocket? = null
     private val CHANNEL_ID = "MicRouterChannel"
 
-    // Hardware components with thread-safe access
     private var recorder: AudioRecord? = null
     private var suppressor: NoiseSuppressor? = null
     private var echo: AcousticEchoCanceler? = null
     private val recorderLock = Object() // Use Object for synchronized blocks
     
-    // Track actual initialized sample rate
     private var actualSampleRate: Int = 48000
 
-    // Throttling
     private var broadcastCounter = 0
     
-    // Connection state
     private var isClientConnected = AtomicBoolean(false)
     
-    // Reconnection throttle
     private var lastConnectionTime = 0L
     private val MIN_CONNECTION_INTERVAL_MS = 500L
 
@@ -390,7 +385,7 @@ class AudioService : Service() {
                         
                         output.writeInt(read)
                         output.write(buffer, 0, read)
-                        output.flush() // CHANGE 2: Flush immediately for low latency
+                        output.flush()
                         
                         if (broadcastCounter++ % 10 == 0) { // Throttle waveform slightly more
                             val validData = buffer.copyOfRange(0, read)
@@ -399,7 +394,6 @@ class AudioService : Service() {
                         }
                     }
                     read == 0 -> {
-                        // CHANGE 3: Remove Thread.sleep(1)
                     }
                     else -> {
                         consecutiveErrors++

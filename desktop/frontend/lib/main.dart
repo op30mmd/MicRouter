@@ -13,13 +13,11 @@ void main() {
   );
 }
 
-// --- CONTROLLER ---
 class BackendController extends ChangeNotifier {
   Socket? _socket;
   Process? _pythonProcess;
   String status = "Initializing...";
 
-  // Data State
   double currentVolume = 0.0;
   double gainValue = 1.0;
   bool isAiEnabled = false;
@@ -27,7 +25,6 @@ class BackendController extends ChangeNotifier {
   List<String> devices = [];
   String? selectedDevice;
 
-  // TCP Buffer for fragmented packets
   String _socketBuffer = "";
 
   BackendController() {
@@ -203,7 +200,6 @@ class BackendController extends ChangeNotifier {
   }
 }
 
-// --- UI LAYOUT ---
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -240,7 +236,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: Row(
         children: [
-          // --- NAVIGATION RAIL ---
           NavigationRail(
             selectedIndex: _selectedIndex,
             backgroundColor: Colors.black26,
@@ -265,7 +260,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const VerticalDivider(thickness: 1, width: 1, color: Colors.white10),
 
-          // --- MAIN CONTENT AREA ---
           Expanded(
             child: _selectedIndex == 0
                 ? const RouterView()
@@ -277,7 +271,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- VIEW 1: ROUTER DASHBOARD ---
 class RouterView extends StatefulWidget {
   const RouterView({super.key});
 
@@ -318,7 +311,6 @@ class _RouterViewState extends State<RouterView> {
           Text("Dashboard", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 40),
 
-          // 1. Visualizer
           Center(
             child: Container(
               height: 80,
@@ -371,7 +363,6 @@ class _RouterViewState extends State<RouterView> {
 
           const SizedBox(height: 60),
 
-          // 2. Start/Stop Action Buttons
           Center(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -408,7 +399,6 @@ class _RouterViewState extends State<RouterView> {
           const Divider(color: Colors.white10),
           const SizedBox(height: 10),
 
-          // 3. Logs Console
           const Text("System Logs:", style: TextStyle(color: Colors.grey, fontSize: 12)),
           Container(
             margin: const EdgeInsets.only(top: 8),
@@ -436,7 +426,6 @@ class _RouterViewState extends State<RouterView> {
   }
 }
 
-// --- VIEW 2: SETTINGS PAGE ---
 class SettingsView extends StatelessWidget {
   const SettingsView({super.key});
 
@@ -452,7 +441,6 @@ class SettingsView extends StatelessWidget {
           Text("Audio Settings", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 40),
 
-          // 1. Output Device Selection
           Card(
             color: Colors.white.withOpacity(0.05),
             child: Padding(
@@ -498,14 +486,12 @@ class SettingsView extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // 2. Gain & Effects
           Card(
             color: Colors.white.withOpacity(0.05),
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  // AI Toggle
                   Row(
                     children: [
                       const Icon(Icons.auto_awesome, color: Colors.amber),
@@ -529,7 +515,6 @@ class SettingsView extends StatelessWidget {
 
                   const Divider(height: 30, color: Colors.white10),
 
-                  // Gain Slider
                   Row(
                     children: [
                       const Icon(Icons.volume_up, color: Colors.cyanAccent),

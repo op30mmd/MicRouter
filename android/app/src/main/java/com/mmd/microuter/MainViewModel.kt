@@ -19,7 +19,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _audioData = MutableStateFlow<ByteArray?>(null)
     val audioData = _audioData.asStateFlow()
 
-    // NEW: Rich Status State
     private val _serviceStatus = MutableStateFlow("STOPPED")
     val serviceStatus = _serviceStatus.asStateFlow()
 

@@ -10,7 +10,6 @@ import sys
 import os 
 from denoiser import RNNoise
 
-# CONFIGURATION
 FLUTTER_PORT = 5000
 ANDROID_PORT = 6000
 

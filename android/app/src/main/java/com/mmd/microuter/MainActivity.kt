@@ -19,12 +19,9 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
     private val requestPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
-            // Handle permissions
-        }
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ -> }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // 1. Enable Edge-to-Edge before setContent
         enableEdgeToEdge()
 
         super.onCreate(savedInstanceState)
@@ -33,7 +30,6 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                // Just call the main screen wrapper
                 MainScreen(viewModel = viewModel)
             }
         }
