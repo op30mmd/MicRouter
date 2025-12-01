@@ -37,6 +37,8 @@ dependencies:
   cupertino_icons: ^1.0.6
   provider: ^6.1.5+1
   path: ^1.9.0
+  window_manager: ^0.3.8
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:

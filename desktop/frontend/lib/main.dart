@@ -3,8 +3,28 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:window_manager/window_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+
+  WindowOptions windowOptions = const WindowOptions(
+    size: Size(800, 600),
+    center: true,
+    backgroundColor: Colors.transparent,
+    skipTaskbar: false,
+    titleBarStyle: TitleBarStyle.normal,
+  );
+  
+  windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.show();
+    await windowManager.focus();
+  });
+
+  await windowManager.setPreventClose(true);
+
   runApp(
     ChangeNotifierProvider(
       create: (_) => BackendController(),
@@ -29,6 +49,29 @@ class BackendController extends ChangeNotifier {
 
   BackendController() {
     _startEmbeddedBackend();
+    loadSettings();
+  }
+
+  Future<void> loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    isAiEnabled = prefs.getBool('isAiEnabled') ?? false;
+    gainValue = prefs.getDouble('gainValue') ?? 1.0;
+    selectedDevice = prefs.getString('selectedDevice');
+    
+    // Apply loaded settings
+    if (isAiEnabled) toggleAi(isAiEnabled);
+    if (gainValue != 1.0) setGain(gainValue);
+    
+    notifyListeners();
+  }
+
+  Future<void> saveSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isAiEnabled', isAiEnabled);
+    await prefs.setDouble('gainValue', gainValue);
+    if (selectedDevice != null) {
+      await prefs.setString('selectedDevice', selectedDevice!);
+    }
   }
 
   void _startEmbeddedBackend() async {
@@ -200,8 +243,32 @@ class BackendController extends ChangeNotifier {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WindowListener {
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  @override
+  void onWindowClose() async {
+    final controller = Provider.of<BackendController>(context, listen: false);
+    await controller.saveSettings();
+    await windowManager.destroy();
+  }
 
   @override
   Widget build(BuildContext context) {
