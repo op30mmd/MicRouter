@@ -313,6 +313,8 @@ class AudioService : Service() {
                 AppLogger.i("AudioService", "NoiseSuppressor enabled")
             } catch (e: Exception) {
                 AppLogger.w("AudioService", "NoiseSuppressor failed: ${e.message}")
+                suppressor?.release()
+                suppressor = null
             }
         }
 
@@ -323,6 +325,8 @@ class AudioService : Service() {
                 AppLogger.i("AudioService", "AcousticEchoCanceler enabled")
             } catch (e: Exception) {
                 AppLogger.w("AudioService", "AcousticEchoCanceler failed: ${e.message}")
+                echo?.release()
+                echo = null
             }
         }
     }

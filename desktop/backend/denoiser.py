@@ -82,5 +82,10 @@ class RNNoise:
         return bytes(output_bytes)
 
     def destroy(self):
-        self.lib.rnnoise_destroy.argtypes = [ctypes.c_void_p]
-        self.lib.rnnoise_destroy(self.state)
+        if hasattr(self, 'state') and self.state:
+            self.lib.rnnoise_destroy.argtypes = [ctypes.c_void_p]
+            self.lib.rnnoise_destroy(self.state)
+            self.state = None
+
+    def __del__(self):
+        self.destroy()

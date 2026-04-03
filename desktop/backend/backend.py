@@ -70,14 +70,25 @@ class BackendServer:
         """
         self.device_map = {}
 
-        # 1. Find the WASAPI Host API Index
-        wasapi_index = -1
+        # 1. Find the Low Latency Host API Index (WASAPI for Win, Pulse/ALSA for Linux)
+        target_api_index = -1
+        is_windows = sys.platform == "win32"
+        target_api_name = "WASAPI" if is_windows else "PulseAudio"
+
         try:
             for i in range(self.p.get_host_api_count()):
                 api = self.p.get_host_api_info_by_index(i)
-                if "WASAPI" in api.get("name", ""):
-                    wasapi_index = i
+                if target_api_name in api.get("name", ""):
+                    target_api_index = i
                     break
+
+            # Fallback for Linux if PulseAudio is not found
+            if not is_windows and target_api_index == -1:
+                for i in range(self.p.get_host_api_count()):
+                    api = self.p.get_host_api_info_by_index(i)
+                    if "ALSA" in api.get("name", ""):
+                        target_api_index = i
+                        break
         except: pass
 
         # 2. Get total device count
@@ -105,8 +116,8 @@ class BackendServer:
                     # Clean the name for matching (WASAPI devices often prepend "Speakers (Realtek...)")
                     clean_name = name
 
-                    if host_api == wasapi_index:
-                        # This is a WASAPI device. Always prefer this.
+                    if host_api == target_api_index:
+                        # This is a Low Latency device. Always prefer this.
                         # We might overwrite a previous entry with the same name, which is good.
                         self.device_map[name] = i
 
@@ -152,15 +163,19 @@ class BackendServer:
             
         elif command == 'toggle_rnnoise':
             self.use_rnnoise = cmd.get('value', False)
-            if self.use_rnnoise and self.rnnoise is None:
-                try:
-                    self.rnnoise = RNNoise()
-                    self.send_to_flutter({"type": "log", "message": "[*] AI Denoising Enabled"})
-                except Exception as e:
-                    self.send_to_flutter({"type": "error", "message": f"RNNoise Error: {e}"})
-                    self.use_rnnoise = False
-            elif not self.use_rnnoise:
-                self.send_to_flutter({"type": "log", "message": "[*] AI Denoising Disabled"})
+            if self.use_rnnoise:
+                if self.rnnoise is None:
+                    try:
+                        self.rnnoise = RNNoise()
+                        self.send_to_flutter({"type": "log", "message": "[*] AI Denoising Enabled"})
+                    except Exception as e:
+                        self.send_to_flutter({"type": "error", "message": f"RNNoise Error: {e}"})
+                        self.use_rnnoise = False
+            else:
+                if self.rnnoise is not None:
+                    self.rnnoise.destroy()
+                    self.rnnoise = None
+                    self.send_to_flutter({"type": "log", "message": "[*] AI Denoising Disabled"})
 
         elif command == 'start':
             if not self.is_streaming:
@@ -353,7 +368,7 @@ class BackendServer:
                         final_data = audio_array.tobytes()
 
                     # Send RMS to UI (Throttle to avoid flooding socket)
-                    if len(audio_array) > 0 and int(time.time() * 10) % 2 == 0:
+                    if len(audio_array) > 0 and int(time.time() * 20) % 2 == 0:
                         rms = np.sqrt(np.mean(audio_array.astype(float)**2))
                         self.send_to_flutter({"type": "volume", "value": min(rms / 2000, 1.0)})
                     
@@ -384,8 +399,13 @@ class BackendServer:
     def cleanup(self):
         self.is_streaming = False
         try:
+            if self.rnnoise:
+                self.rnnoise.destroy()
+                self.rnnoise = None
             self.p.terminate()
             self.server_socket.close()
+            if self.client_socket:
+                self.client_socket.close()
         except: pass
 
 if __name__ == "__main__":
