@@ -152,15 +152,19 @@ class BackendServer:
             
         elif command == 'toggle_rnnoise':
             self.use_rnnoise = cmd.get('value', False)
-            if self.use_rnnoise and self.rnnoise is None:
-                try:
-                    self.rnnoise = RNNoise()
-                    self.send_to_flutter({"type": "log", "message": "[*] AI Denoising Enabled"})
-                except Exception as e:
-                    self.send_to_flutter({"type": "error", "message": f"RNNoise Error: {e}"})
-                    self.use_rnnoise = False
-            elif not self.use_rnnoise:
-                self.send_to_flutter({"type": "log", "message": "[*] AI Denoising Disabled"})
+            if self.use_rnnoise:
+                if self.rnnoise is None:
+                    try:
+                        self.rnnoise = RNNoise()
+                        self.send_to_flutter({"type": "log", "message": "[*] AI Denoising Enabled"})
+                    except Exception as e:
+                        self.send_to_flutter({"type": "error", "message": f"RNNoise Error: {e}"})
+                        self.use_rnnoise = False
+            else:
+                if self.rnnoise is not None:
+                    self.rnnoise.destroy()
+                    self.rnnoise = None
+                    self.send_to_flutter({"type": "log", "message": "[*] AI Denoising Disabled"})
 
         elif command == 'start':
             if not self.is_streaming:
@@ -353,7 +357,7 @@ class BackendServer:
                         final_data = audio_array.tobytes()
 
                     # Send RMS to UI (Throttle to avoid flooding socket)
-                    if len(audio_array) > 0 and int(time.time() * 10) % 2 == 0:
+                    if len(audio_array) > 0 and int(time.time() * 20) % 2 == 0:
                         rms = np.sqrt(np.mean(audio_array.astype(float)**2))
                         self.send_to_flutter({"type": "volume", "value": min(rms / 2000, 1.0)})
                     
@@ -384,8 +388,13 @@ class BackendServer:
     def cleanup(self):
         self.is_streaming = False
         try:
+            if self.rnnoise:
+                self.rnnoise.destroy()
+                self.rnnoise = None
             self.p.terminate()
             self.server_socket.close()
+            if self.client_socket:
+                self.client_socket.close()
         except: pass
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ class BackendController extends ChangeNotifier {
   List<String> devices = [];
   String? selectedDevice;
 
-  String _socketBuffer = "";
+  final List<int> _socketBytesBuffer = [];
 
   BackendController() {
     _startEmbeddedBackend();
@@ -123,7 +123,7 @@ class BackendController extends ChangeNotifier {
       // Request initial state
       sendCommand("get_devices");
 
-      _socket!.cast<List<int>>().transform(utf8.decoder).listen(
+      _socket!.listen(
         _onDataReceived,
         onDone: () {
           status = "Backend Disconnected";
@@ -149,20 +149,25 @@ class BackendController extends ChangeNotifier {
     Future.delayed(const Duration(seconds: 2), connectToPython);
   }
 
-  // --- CRITICAL FIX: Handle Fragmented TCP Packets ---
-  void _onDataReceived(String data) {
-    _socketBuffer += data;
+  // --- CRITICAL FIX: Handle Fragmented TCP Packets (Byte-level) ---
+  void _onDataReceived(List<int> data) {
+    _socketBytesBuffer.addAll(data);
 
-    while (_socketBuffer.contains('\n')) {
-      int index = _socketBuffer.indexOf('\n');
-      String line = _socketBuffer.substring(0, index).trim();
-      _socketBuffer = _socketBuffer.substring(index + 1);
+    while (true) {
+      int index = _socketBytesBuffer.indexOf(10); // 10 is '\n'
+      if (index == -1) break;
 
-      if (line.isNotEmpty) {
+      List<int> lineBytes = _socketBytesBuffer.sublist(0, index);
+      _socketBytesBuffer.removeRange(0, index + 1);
+
+      if (lineBytes.isNotEmpty) {
         try {
-          _handleMessage(jsonDecode(line));
+          String line = utf8.decode(lineBytes).trim();
+          if (line.isNotEmpty) {
+            _handleMessage(jsonDecode(line));
+          }
         } catch (e) {
-          print("JSON Error: $e | Line: $line");
+          print("Socket Data Error: $e");
         }
       }
     }
