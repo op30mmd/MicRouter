@@ -85,8 +85,10 @@ class BackendController extends ChangeNotifier {
     // Check if script exists (Release mode vs Debug mode adjustments might be needed)
     if (await File(scriptPath).exists()) {
       try {
-        _pythonProcess = await Process.start('python', [scriptPath]);
-        _log("Python backend started.");
+        // Use 'python3' on Linux/macOS as 'python' often doesn't exist
+        String pythonCmd = Platform.isWindows ? 'python' : 'python3';
+        _pythonProcess = await Process.start(pythonCmd, [scriptPath]);
+        _log("Python backend started using $pythonCmd.");
 
         // Listen to Python's STDERR for debugging
         _pythonProcess!.stderr.transform(utf8.decoder).listen((data) {

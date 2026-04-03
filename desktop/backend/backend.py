@@ -70,14 +70,25 @@ class BackendServer:
         """
         self.device_map = {}
 
-        # 1. Find the WASAPI Host API Index
-        wasapi_index = -1
+        # 1. Find the Low Latency Host API Index (WASAPI for Win, Pulse/ALSA for Linux)
+        target_api_index = -1
+        is_windows = sys.platform == "win32"
+        target_api_name = "WASAPI" if is_windows else "PulseAudio"
+
         try:
             for i in range(self.p.get_host_api_count()):
                 api = self.p.get_host_api_info_by_index(i)
-                if "WASAPI" in api.get("name", ""):
-                    wasapi_index = i
+                if target_api_name in api.get("name", ""):
+                    target_api_index = i
                     break
+
+            # Fallback for Linux if PulseAudio is not found
+            if not is_windows and target_api_index == -1:
+                for i in range(self.p.get_host_api_count()):
+                    api = self.p.get_host_api_info_by_index(i)
+                    if "ALSA" in api.get("name", ""):
+                        target_api_index = i
+                        break
         except: pass
 
         # 2. Get total device count
@@ -105,8 +116,8 @@ class BackendServer:
                     # Clean the name for matching (WASAPI devices often prepend "Speakers (Realtek...)")
                     clean_name = name
 
-                    if host_api == wasapi_index:
-                        # This is a WASAPI device. Always prefer this.
+                    if host_api == target_api_index:
+                        # This is a Low Latency device. Always prefer this.
                         # We might overwrite a previous entry with the same name, which is good.
                         self.device_map[name] = i
 
