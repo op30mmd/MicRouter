@@ -287,7 +287,7 @@ jobs:
           Section: utils
           Priority: optional
           Architecture: amd64
-          Depends: python3, python3-pip, python3-numpy, python3-pyaudio, libportaudio2, libgtk-3-0 | libgtk-3-0t64
+          Depends: python3, python3-pip, python3-numpy, python3-pyaudio, libportaudio2, libgtk-3-0 | libgtk-3-0t64, pulseaudio-utils
           Maintainer: MicRouter Team
           Description: Use your Android phone as a microphone for your PC.
           EOF
