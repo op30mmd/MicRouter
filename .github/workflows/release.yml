@@ -157,6 +157,7 @@ jobs:
           path: release_package/MicRouter-PC-Windows.zip
 
       - name: Create Inno Setup Script
+        shell: bash
         run: |
           cat > microuter.iss <<EOF
           [Setup]
