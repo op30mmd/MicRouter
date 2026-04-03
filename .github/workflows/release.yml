@@ -156,6 +156,40 @@ jobs:
           name: MicRouter-PC-Windows
           path: release_package/MicRouter-PC-Windows.zip
 
+      - name: Create Inno Setup Script
+        shell: bash
+        run: |
+          cat > microuter.iss <<EOF
+          [Setup]
+          AppName=MicRouter
+          AppVersion=1.0.0
+          DefaultDirName={pf}\MicRouter
+          DefaultGroupName=MicRouter
+          OutputDir=.
+          OutputBaseFilename=MicRouter-Installer
+          Compression=lzma
+          SolidCompression=yes
+
+          [Files]
+          Source: "release_package\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{group}\MicRouter"; Filename: "{app}\microuter_pc.exe"
+          Name: "{commondesktop}\MicRouter"; Filename: "{app}\microuter_pc.exe"
+
+          [Run]
+          Filename: "{app}\microuter_pc.exe"; Description: "{cm:LaunchProgram,MicRouter}"; Flags: nowait postinstall skipifsilent
+          EOF
+
+      - name: Compile Windows Installer
+        run: iscc microuter.iss
+
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: MicRouter-PC-Windows-Installer
+          path: MicRouter-Installer.exe
+
   build-linux:
     needs: test-python
     runs-on: ubuntu-24.04
@@ -227,6 +261,19 @@ jobs:
           EOF
           chmod +x deb_root/usr/bin/microuter
 
+          # Desktop Entry
+          mkdir -p deb_root/usr/share/applications
+          cat > deb_root/usr/share/applications/microuter.desktop <<EOF
+          [Desktop Entry]
+          Name=MicRouter
+          Comment=Use your Android phone as a microphone
+          Exec=microuter
+          Icon=audio-input-microphone
+          Terminal=false
+          Type=Application
+          Categories=AudioVideo;Audio;
+          EOF
+
           # Backend
           cp desktop/backend/backend.py deb_root/usr/lib/microuter/backend/
           cp desktop/backend/denoiser.py deb_root/usr/lib/microuter/backend/
@@ -274,6 +321,11 @@ jobs:
         with:
           name: MicRouter-PC-Windows
 
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: MicRouter-PC-Windows-Installer
+
       - name: Download Linux deb package
         uses: actions/download-artifact@v4
         with:
@@ -294,6 +346,7 @@ jobs:
           files: |
             app-release.apk
             MicRouter-PC-Windows.zip
+            MicRouter-Installer.exe
             microuter_1.0.0_amd64.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
