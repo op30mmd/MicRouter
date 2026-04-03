@@ -34,6 +34,7 @@ class BackendServer:
         self.current_gain = 1.0
         self.rnnoise = None
         self.use_rnnoise = False
+        self.linux_modules = []
 
         self.start_parent_watchdog()
 
@@ -69,6 +70,10 @@ class BackendServer:
         Prioritizes Windows WASAPI (Low Latency) if available.
         """
         self.device_map = {}
+
+        # 0. Add Virtual Mic option for Linux
+        if sys.platform.startswith('linux'):
+            self.device_map["[Virtual Microphone] MicRouter"] = -2
 
         # 1. Find the Low Latency Host API Index (WASAPI for Win, Pulse/ALSA for Linux)
         target_api_index = -1
@@ -221,6 +226,56 @@ class BackendServer:
                 return None
         return data
 
+    def _setup_linux_virtual_mic(self):
+        """Creates a virtual null-sink and remaps it to a source on Linux."""
+        try:
+            self._cleanup_linux_virtual_mic() # Clean up any existing ones first
+
+            # 1. Create Null Sink
+            res = subprocess.run([
+                "pactl", "load-module", "module-null-sink",
+                "sink_name=microuter_sink",
+                "sink_properties=device.description=MicRouter_Virtual_Mic"
+            ], capture_output=True, text=True, check=True)
+            self.linux_modules.append(res.stdout.strip())
+
+            # 2. Remap Monitor to Source (so it shows up in Input devices)
+            res = subprocess.run([
+                "pactl", "load-module", "module-remap-source",
+                "master=microuter_sink.monitor",
+                "source_name=microuter_source",
+                "source_properties=device.description=MicRouter_Virtual_Mic"
+            ], capture_output=True, text=True, check=True)
+            self.linux_modules.append(res.stdout.strip())
+
+            # Give PulseAudio a moment to register
+            time.sleep(0.5)
+
+            # Refresh device list to find the new sink
+            self.p = pyaudio.PyAudio() # Re-init PyAudio to see new device
+            self._scan_devices()
+
+            # Look for the internal name pactl gives it or the description
+            for i in range(self.p.get_device_count()):
+                dev = self.p.get_device_info_by_index(i)
+                if "microuter_sink" in dev.get('name', '').lower() or "microuter" in dev.get('name', '').lower():
+                    return i
+            return None
+        except Exception as e:
+            self.send_to_flutter({"type": "error", "message": f"Virtual Mic Error: {e}"})
+            return None
+
+    def _cleanup_linux_virtual_mic(self):
+        """Unloads PulseAudio modules created for virtual mic."""
+        # Try to unload by name first as it's more reliable if we crashed
+        subprocess.run(["pactl", "unload-module", "module-remap-source"], stderr=subprocess.DEVNULL)
+        subprocess.run(["pactl", "unload-module", "module-null-sink"], stderr=subprocess.DEVNULL)
+
+        # Also try to unload by tracked IDs
+        for mod_id in reversed(self.linux_modules):
+            subprocess.run(["pactl", "unload-module", mod_id], stderr=subprocess.DEVNULL)
+        self.linux_modules = []
+
     def audio_stream_logic(self, device_name, port):
         sock = None
         stream = None
@@ -296,6 +351,13 @@ class BackendServer:
 
             # --- AUDIO DEVICE SETUP ---
             device_index = self.device_map.get(device_name)
+
+            if device_index == -2: # Linux Virtual Mic
+                self.send_to_flutter({"type": "log", "message": "[*] Setting up Virtual Microphone..."})
+                device_index = self._setup_linux_virtual_mic()
+                if device_index is None:
+                    raise Exception("Failed to setup virtual microphone. Is pactl installed?")
+
             if device_index is None:
                 device_index = self.p.get_default_output_device_info()["index"]
 
@@ -392,6 +454,9 @@ class BackendServer:
                 try: sock.close()
                 except: pass
             
+            if self.linux_modules:
+                self._cleanup_linux_virtual_mic()
+
             self.is_streaming = False
             self.send_to_flutter({"type": "status", "payload": "stopped"})
             self.send_to_flutter({"type": "volume", "value": 0.0})
@@ -399,6 +464,8 @@ class BackendServer:
     def cleanup(self):
         self.is_streaming = False
         try:
+            if self.linux_modules:
+                self._cleanup_linux_virtual_mic()
             if self.rnnoise:
                 self.rnnoise.destroy()
                 self.rnnoise = None
