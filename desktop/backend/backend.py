@@ -237,7 +237,7 @@ class BackendServer:
             res = subprocess.run([
                 "pactl", "load-module", "module-null-sink",
                 "sink_name=microuter_sink",
-                f"sink_properties=\"device.description='MicRouter Virtual Mic'\"",
+                f"sink_properties=\"device.description='MicRouter Internal Sink'\"",
                 f"rate={sample_rate}",
                 "channels=1"
             ], capture_output=True, text=True, check=True)
@@ -248,7 +248,7 @@ class BackendServer:
                 "pactl", "load-module", "module-remap-source",
                 "master=microuter_sink.monitor",
                 "source_name=microuter_source",
-                f"source_properties=\"device.description='MicRouter Virtual Mic'\"",
+                f"source_properties=\"device.description='MicRouter Virtual Microphone' device.class='audio' device.icon_name='audio-input-microphone'\"",
                 "channels=1"
             ], capture_output=True, text=True, check=True)
             self.linux_modules.append(res.stdout.strip())
