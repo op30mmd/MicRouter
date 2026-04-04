@@ -41,6 +41,7 @@ class BackendController extends ChangeNotifier {
   double currentVolume = 0.0;
   double gainValue = 1.0;
   bool isAiEnabled = false;
+  bool isDarkMode = true;
   List<String> logs = [];
   List<String> devices = [];
   String? selectedDevice;
@@ -56,6 +57,7 @@ class BackendController extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     isAiEnabled = prefs.getBool('isAiEnabled') ?? false;
     gainValue = prefs.getDouble('gainValue') ?? 1.0;
+    isDarkMode = prefs.getBool('isDarkMode') ?? true;
     selectedDevice = prefs.getString('selectedDevice');
     
     // Apply loaded settings
@@ -69,6 +71,7 @@ class BackendController extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isAiEnabled', isAiEnabled);
     await prefs.setDouble('gainValue', gainValue);
+    await prefs.setBool('isDarkMode', isDarkMode);
     if (selectedDevice != null) {
       await prefs.setString('selectedDevice', selectedDevice!);
     }
@@ -245,6 +248,12 @@ class BackendController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleTheme(bool value) {
+    isDarkMode = value;
+    saveSettings();
+    notifyListeners();
+  }
+
   void refreshDevices() {
     sendCommand("get_devices");
   }
@@ -277,19 +286,90 @@ class _MyAppState extends State<MyApp> with WindowListener {
     await windowManager.destroy();
   }
 
+  ThemeData _buildTheme(bool isDark) {
+    final isLinux = Platform.isLinux;
+    final ubuntuOrange = const Color(0xFFE95420);
+
+    if (isLinux) {
+      if (isDark) {
+        return ThemeData(
+          useMaterial3: true,
+          brightness: Brightness.dark,
+          primaryColor: ubuntuOrange,
+          scaffoldBackgroundColor: const Color(0xFF300A24), // Ubuntu Dark Aubergine
+          colorScheme: ColorScheme.dark(
+            primary: ubuntuOrange,
+            secondary: ubuntuOrange,
+            surface: const Color(0xFF3D3D3D),
+            onSurface: Colors.white,
+            surfaceContainerHighest: const Color(0xFF4D4D4D),
+          ),
+          cardTheme: CardThemeData(
+            color: const Color(0xFF3D3D3D),
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      } else {
+        return ThemeData(
+          useMaterial3: true,
+          brightness: Brightness.light,
+          primaryColor: ubuntuOrange,
+          scaffoldBackgroundColor: const Color(0xFFF7F7F7),
+          colorScheme: ColorScheme.light(
+            primary: ubuntuOrange,
+            secondary: ubuntuOrange,
+            surface: Colors.white,
+            onSurface: const Color(0xFF333333),
+            surfaceContainerHighest: const Color(0xFFEEEEEE),
+          ),
+          cardTheme: CardThemeData(
+            color: Colors.white,
+            elevation: 1,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        );
+      }
+    } else {
+      // Default Modern Cyan/Purple Theme
+      if (isDark) {
+        return ThemeData(
+          useMaterial3: true,
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: const Color(0xFF121212),
+          colorScheme: ColorScheme.dark(
+            primary: Colors.cyanAccent,
+            secondary: Colors.purpleAccent,
+            surface: const Color(0xFF1E1E1E),
+            surfaceContainerHighest: const Color(0xFF2C2C2C),
+          ),
+        );
+      } else {
+        return ThemeData(
+          useMaterial3: true,
+          brightness: Brightness.light,
+          scaffoldBackgroundColor: const Color(0xFFF5F5F5),
+          colorScheme: ColorScheme.light(
+            primary: Colors.cyan,
+            secondary: Colors.purple,
+            surface: Colors.white,
+            surfaceContainerHighest: const Color(0xFFE0E0E0),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final controller = context.watch<BackendController>();
+
     return MaterialApp(
       title: 'MicRouter PC',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(useMaterial3: true).copyWith(
-        scaffoldBackgroundColor: Colors.grey[900],
-        colorScheme: ColorScheme.dark(
-          primary: Colors.cyanAccent,
-          secondary: Colors.purpleAccent,
-          surface: Colors.grey[850]!,
-        ),
-      ),
+      themeMode: controller.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      theme: _buildTheme(false),
+      darkTheme: _buildTheme(true),
       home: const HomeScreen(),
     );
   }
@@ -312,7 +392,7 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           NavigationRail(
             selectedIndex: _selectedIndex,
-            backgroundColor: Colors.black26,
+            backgroundColor: Theme.of(context).colorScheme.surface.withOpacity(0.5),
             labelType: NavigationRailLabelType.all,
             onDestinationSelected: (int index) {
               setState(() {
@@ -332,7 +412,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          const VerticalDivider(thickness: 1, width: 1, color: Colors.white10),
+          VerticalDivider(thickness: 1, width: 1, color: Theme.of(context).dividerColor.withOpacity(0.1)),
 
           Expanded(
             child: _selectedIndex == 0
@@ -391,11 +471,11 @@ class _RouterViewState extends State<RouterView> {
               width: double.infinity,
               constraints: const BoxConstraints(maxWidth: 700),
               decoration: BoxDecoration(
-                color: Colors.black45,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white12),
+                border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))
+                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))
                 ]
               ),
               child: ClipRRect(
@@ -404,8 +484,11 @@ class _RouterViewState extends State<RouterView> {
                   alignment: Alignment.centerLeft,
                   widthFactor: controller.currentVolume.clamp(0.0, 1.0),
                   child: Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(colors: [Colors.cyanAccent, Colors.purpleAccent]),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [
+                        Theme.of(context).colorScheme.primary,
+                        Theme.of(context).colorScheme.secondary,
+                      ]),
                     ),
                   ),
                 ),
@@ -420,7 +503,9 @@ class _RouterViewState extends State<RouterView> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: controller.status.contains("running") ? Colors.green.withOpacity(0.2) : Colors.white10,
+                color: controller.status.contains("running")
+                    ? Colors.green.withOpacity(0.2)
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(20)
               ),
               child: Text(
@@ -429,7 +514,9 @@ class _RouterViewState extends State<RouterView> {
                   letterSpacing: 1.2,
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: controller.status.contains("running") ? Colors.greenAccent : Colors.grey
+                  color: controller.status.contains("running")
+                      ? (Theme.of(context).brightness == Brightness.dark ? Colors.greenAccent : Colors.green[700])
+                      : Theme.of(context).hintColor
                 )
               ),
             ),
@@ -470,18 +557,18 @@ class _RouterViewState extends State<RouterView> {
           ),
 
           const Spacer(),
-          const Divider(color: Colors.white10),
+          Divider(color: Theme.of(context).dividerColor.withOpacity(0.1)),
           const SizedBox(height: 10),
 
-          const Text("System Logs:", style: TextStyle(color: Colors.grey, fontSize: 12)),
+          Text("System Logs:", style: TextStyle(color: Theme.of(context).hintColor, fontSize: 12)),
           Container(
             margin: const EdgeInsets.only(top: 8),
             padding: const EdgeInsets.all(8),
             height: 120,
             decoration: BoxDecoration(
-              color: Colors.black87,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white10)
+              border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1))
             ),
             child: ListView.builder(
               controller: _scrollController,
@@ -489,7 +576,11 @@ class _RouterViewState extends State<RouterView> {
               itemBuilder: (ctx, i) {
                 return Text(
                   ">> ${controller.logs[i]}",
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.white70),
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)
+                  ),
                 );
               },
             ),
@@ -516,7 +607,6 @@ class SettingsView extends StatelessWidget {
           const SizedBox(height: 40),
 
           Card(
-            color: Colors.white.withOpacity(0.05),
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -536,13 +626,13 @@ class SettingsView extends StatelessWidget {
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
                     value: controller.selectedDevice,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: InputDecoration(
+                      border: const OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       filled: true,
-                      fillColor: Colors.black26
+                      fillColor: Theme.of(context).colorScheme.surface
                     ),
-                    dropdownColor: Colors.grey[850],
+                    dropdownColor: Theme.of(context).colorScheme.surface,
                     isExpanded: true,
                     hint: const Text("Select a speaker..."),
                     items: controller.devices.map((String value) {
@@ -561,11 +651,31 @@ class SettingsView extends StatelessWidget {
           const SizedBox(height: 20),
 
           Card(
-            color: Colors.white.withOpacity(0.05),
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
+                  Row(
+                    children: [
+                      Icon(Icons.dark_mode, color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(width: 15),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Dark Mode", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                            Text("Switch between light and dark UI", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: controller.isDarkMode,
+                        onChanged: (val) => controller.toggleTheme(val),
+                      ),
+                    ],
+                  ),
+
+                  const Divider(height: 30, color: Colors.white10),
                   Row(
                     children: [
                       const Icon(Icons.auto_awesome, color: Colors.amber),
