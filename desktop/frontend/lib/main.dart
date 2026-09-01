@@ -78,33 +78,41 @@ class BackendController extends ChangeNotifier {
   }
 
   void _startEmbeddedBackend() async {
-    // Locate the backend script relative to the executable
+    // Locate the backend relative to the executable
     String exePath = Platform.resolvedExecutable;
     String dir = File(exePath).parent.path;
+    String backendExeName = Platform.isWindows ? 'microuter_backend.exe' : 'microuter_backend';
+    String backendExePath = p.join(dir, 'backend', backendExeName);
     String scriptPath = p.join(dir, 'backend', 'backend.py');
 
-    _log("Looking for script at: $scriptPath");
-
-    // Check if script exists (Release mode vs Debug mode adjustments might be needed)
-    if (await File(scriptPath).exists()) {
-      try {
-        // Use 'python3' on Linux/macOS as 'python' often doesn't exist
-        String pythonCmd = Platform.isWindows ? 'python' : 'python3';
-        _pythonProcess = await Process.start(pythonCmd, [scriptPath]);
-        _log("Python backend started using $pythonCmd.");
-
-        // Listen to Python's STDERR for debugging
+    try {
+      if (await File(backendExePath).exists()) {
+        // Packaged release: self-contained backend, no system Python required.
+        _log("Looking for bundled backend at: $backendExePath");
+        _pythonProcess = await Process.start(backendExePath, []);
+        _log("Backend started using bundled executable.");
         _pythonProcess!.stderr.transform(utf8.decoder).listen((data) {
-             // Optional: Filter out noisy PyAudio logs
              if (!data.contains("ALSA") && !data.contains("jack")) {
                  print("PY_ERR: $data");
              }
         });
-      } catch (e) {
-        _log("Failed to launch python: $e");
+      } else if (await File(scriptPath).exists()) {
+        // Dev mode: running from source, fall back to system Python.
+        _log("Looking for script at: $scriptPath");
+        String pythonCmd = Platform.isWindows ? 'python' : 'python3';
+        _pythonProcess = await Process.start(pythonCmd, [scriptPath]);
+        _log("Python backend started using $pythonCmd.");
+
+        _pythonProcess!.stderr.transform(utf8.decoder).listen((data) {
+             if (!data.contains("ALSA") && !data.contains("jack")) {
+                 print("PY_ERR: $data");
+             }
+        });
+      } else {
+        _log("Backend not found. Assuming external/dev backend.");
       }
-    } else {
-      _log("backend.py not found. Assuming external/dev backend.");
+    } catch (e) {
+      _log("Failed to launch backend: $e");
     }
 
     // Give it a moment to bind the port

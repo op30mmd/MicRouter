@@ -11,8 +11,10 @@ android {
         applicationId = "com.mmd.microuter"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // Overridable from CI via -PversionName=x.y.z -PversionCode=n so the
+        // shipped app version tracks the actual release tag instead of drifting.
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = project.findProperty("versionName") as String? ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

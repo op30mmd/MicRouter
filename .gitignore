@@ -56,6 +56,10 @@ venv/
 env/
 .env
 
+# PyInstaller output (packaged backend executable)
+dist_backend/
+build_backend/
+
 # ========================
 # Flutter (microuter_pc)
 # ========================

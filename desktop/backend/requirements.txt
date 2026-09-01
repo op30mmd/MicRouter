@@ -1,5 +1,2 @@
 pyaudio
 numpy
-# Testing tools
-pytest
-flake8

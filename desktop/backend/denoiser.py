@@ -1,5 +1,6 @@
 import ctypes
 import os
+import sys
 import numpy as np
 import platform
 
@@ -26,8 +27,13 @@ class RNNoise:
         self.lib.rnnoise_process_frame.restype = ctypes.c_float
 
     def _load_library(self):
-        # Look for the DLL in the 'libs' folder next to this script
-        base_path = os.path.dirname(os.path.abspath(__file__))
+        # Look for the DLL in the 'libs' folder next to this script.
+        # When frozen by PyInstaller, __file__ is unreliable, so resolve
+        # relative to the executable (onedir) or the unpacked bundle (onefile).
+        if getattr(sys, "frozen", False):
+            base_path = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
         lib_name = "rnnoise.dll" if platform.system() == "Windows" else "rnnoise.so"
         lib_path = os.path.join(base_path, "libs", lib_name)
 
