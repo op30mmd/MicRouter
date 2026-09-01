@@ -168,7 +168,7 @@ jobs:
         shell: bash
         run: |
           pyinstaller --onefile --name microuter_backend \
-            --add-binary "rnnoise_build/rnnoise.dll;libs" \
+            --add-binary "$GITHUB_WORKSPACE/rnnoise_build/rnnoise.dll;libs" \
             --distpath dist_backend --workpath build_backend --specpath build_backend \
             desktop/backend/backend.py
 
@@ -298,7 +298,7 @@ jobs:
       - name: Build Backend Executable
         run: |
           pyinstaller --onefile --name microuter_backend \
-            --add-binary "rnnoise_build/rnnoise.so:libs" \
+            --add-binary "$GITHUB_WORKSPACE/rnnoise_build/rnnoise.so:libs" \
             --distpath dist_backend --workpath build_backend --specpath build_backend \
             desktop/backend/backend.py
 
