@@ -449,16 +449,16 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag_version.outputs.new_tag }}
-          name: Release ${{ steps.tag_version.outputs.new_tag }}
-          generate_release_notes: true
-          files: |
-            app-release.apk
-            MicRouter-PC-Windows.zip
-            MicRouter-Installer.exe
-            microuter_${{ needs.compute_version.outputs.version }}_amd64.deb
-            MicRouter-x86_64.AppImage
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.tag_version.outputs.new_tag }}
+          VERSION: ${{ needs.compute_version.outputs.version }}
+        run: |
+          gh release create "$TAG_NAME" \
+            --title "Release $TAG_NAME" \
+            --generate-notes \
+            app-release.apk \
+            MicRouter-PC-Windows.zip \
+            MicRouter-Installer.exe \
+            "microuter_${VERSION}_amd64.deb" \
+            MicRouter-x86_64.AppImage
