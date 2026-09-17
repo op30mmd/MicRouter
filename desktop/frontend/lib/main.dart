@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:window_manager/window_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:yaru/yaru.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -296,48 +297,9 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
   ThemeData _buildTheme(bool isDark) {
     final isLinux = Platform.isLinux;
-    final ubuntuOrange = const Color(0xFFE95420);
 
     if (isLinux) {
-      if (isDark) {
-        return ThemeData(
-          useMaterial3: true,
-          brightness: Brightness.dark,
-          primaryColor: ubuntuOrange,
-          scaffoldBackgroundColor: const Color(0xFF300A24), // Ubuntu Dark Aubergine
-          colorScheme: ColorScheme.dark(
-            primary: ubuntuOrange,
-            secondary: ubuntuOrange,
-            surface: const Color(0xFF3D3D3D),
-            onSurface: Colors.white,
-            surfaceContainerHighest: const Color(0xFF4D4D4D),
-          ),
-          cardTheme: CardThemeData(
-            color: const Color(0xFF3D3D3D),
-            elevation: 0,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-        );
-      } else {
-        return ThemeData(
-          useMaterial3: true,
-          brightness: Brightness.light,
-          primaryColor: ubuntuOrange,
-          scaffoldBackgroundColor: const Color(0xFFF7F7F7),
-          colorScheme: ColorScheme.light(
-            primary: ubuntuOrange,
-            secondary: ubuntuOrange,
-            surface: Colors.white,
-            onSurface: const Color(0xFF333333),
-            surfaceContainerHighest: const Color(0xFFEEEEEE),
-          ),
-          cardTheme: CardThemeData(
-            color: Colors.white,
-            elevation: 1,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          ),
-        );
-      }
+      return isDark ? yaruDark : yaruLight;
     } else {
       // Default Modern Cyan/Purple Theme
       if (isDark) {
