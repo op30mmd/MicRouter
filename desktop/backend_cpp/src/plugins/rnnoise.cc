@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <string>
+#include <vector>
 
 #if defined(_WIN32)
 #  define WIN32_LEAN_AND_MEAN
@@ -12,8 +14,6 @@
 #  include <dlfcn.h>
 #  include <link.h>
 #  include <cstdio>
-#  include <string>
-#  include <vector>
 #endif
 
 namespace mr {

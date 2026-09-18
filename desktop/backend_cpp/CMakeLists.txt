@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(microuter_backend CXX)
+project(microuter_backend C CXX)
 
 # ---------------------------------------------------------------------------
 # MicRouter C++ backend — a drop-in replacement for desktop/backend/backend.py

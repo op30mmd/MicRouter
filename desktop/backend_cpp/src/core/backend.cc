@@ -22,6 +22,7 @@
 #include "plugins/rnnoise.h"
 
 #include <atomic>
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cmath>

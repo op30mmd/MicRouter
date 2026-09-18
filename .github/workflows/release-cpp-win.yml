@@ -77,6 +77,11 @@ jobs:
               celt_lpc.c denoise.c kiss_fft.c pitch.c rnn.c rnn_data.c \
               -I.
 
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Build C++ Backend
         shell: bash
         run: |
