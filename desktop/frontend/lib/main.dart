@@ -84,11 +84,28 @@ class BackendController extends ChangeNotifier {
     String dir = File(exePath).parent.path;
     String backendExeName = Platform.isWindows ? 'microuter_backend.exe' : 'microuter_backend';
     String backendExePath = p.join(dir, 'backend', backendExeName);
+    String cppExeName = Platform.isWindows ? 'microuter_backend_cpp.exe' : 'microuter_backend_cpp';
+    String cppExePath = p.join(dir, 'backend', cppExeName);
     String scriptPath = p.join(dir, 'backend', 'backend.py');
 
     try {
-      if (await File(backendExePath).exists()) {
-        // Packaged release: self-contained backend, no system Python required.
+      if (await File(cppExePath).exists()) {
+        // Preferred: native C++ engine, no Python required.
+        _log("Looking for bundled C++ backend at: $cppExePath");
+        _pythonProcess = await Process.start(cppExePath, []);
+        _log("Backend started using the native C++ executable.");
+
+        _pythonProcess!.stdout.transform(utf8.decoder).listen((data) {
+          if (data.trim().isNotEmpty) print("BACKEND: $data");
+        });
+        _pythonProcess!.stderr.transform(utf8.decoder).listen((data) {
+          if (!data.contains("ALSA") && !data.contains("jack")) {
+            // The C++ binary logs real errors to stderr (RNNoise, PortAudio...).
+            _log(data.trim());
+          }
+        });
+      } else if (await File(backendExePath).exists()) {
+        // PyInstaller fallback: self-contained Python backend, no system Python.
         _log("Looking for bundled backend at: $backendExePath");
         _pythonProcess = await Process.start(backendExePath, []);
         _log("Backend started using bundled executable.");
