@@ -40,6 +40,9 @@ dependencies:
   window_manager: ^0.5.2
   shared_preferences: ^2.2.2
   yaru: ^10.2.0
+  # Fluent UI (Windows only). Used by lib/fluent_shell.dart via
+  # FluentMicRouterApp. Linux keeps using Material/Yaru.
+  fluent_ui: ^4.12.0
 
 dev_dependencies:
   flutter_test:

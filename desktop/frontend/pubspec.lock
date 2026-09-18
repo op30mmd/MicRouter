@@ -121,6 +121,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.0.1"
+  fluent_ui:
+    dependency: "direct main"
+    description:
+      name: fluent_ui
+      sha256: "64c2b9dd208f8e3134d3e38db107235ee30c1dd9b792843274687a7ecc063590"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.16.1"
   flutter:
     dependency: "direct main"
     description: flutter
@@ -134,6 +142,11 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.2"
+  flutter_localizations:
+    dependency: transitive
+    description: flutter
+    source: sdk
+    version: "0.0.0"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -168,6 +181,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.10.1"
+  intl:
+    dependency: transitive
+    description:
+      name: intl
+      sha256: "1ca20c894b1717686a2319b8548763d812bc0aabdac580420a44c5178c57a867"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.20.3"
   json_annotation:
     dependency: transitive
     description:
@@ -212,10 +233,10 @@ packages:
     dependency: transitive
     description:
       name: matcher
-      sha256: "12956d0ad8390bbcc63ca2e1469c0619946ccb52809807067a7020d57e647aa6"
+      sha256: "31bd099b47c10cd1aeb55146a2d46ce0277630ecef3f7dae54ad7873f36696cd"
       url: "https://pub.dev"
     source: hosted
-    version: "0.12.18"
+    version: "0.12.20"
   material_color_utilities:
     dependency: transitive
     description:
@@ -224,6 +245,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.13.0"
+  math_expressions:
+    dependency: transitive
+    description:
+      name: math_expressions
+      sha256: "22aca3a24e445be5f42ecf186cbded1f9951bf9ec5eb48fcddbd55e102bb11f5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.2.0"
   matrix4_transform:
     dependency: transitive
     description:
@@ -236,10 +265,10 @@ packages:
     dependency: transitive
     description:
       name: meta
-      sha256: "23f08335362185a5ea2ad3a4e597f1375e78bce8a040df5c600c8d3552ef2394"
+      sha256: "307249ce4ff29d58a18e97f6345f539382eb9c9c29ecda628900f31de0443dd9"
       url: "https://pub.dev"
     source: hosted
-    version: "1.17.0"
+    version: "1.19.0"
   nested:
     dependency: transitive
     description:
@@ -336,6 +365,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.1.5+1"
+  recase:
+    dependency: transitive
+    description:
+      name: recase
+      sha256: e4eb4ec2dcdee52dcf99cb4ceabaffc631d7424ee55e56f280bc039737f89213
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.1.0"
   screen_retriever:
     dependency: transitive
     description:
@@ -376,6 +413,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.2"
+  scroll_pos:
+    dependency: transitive
+    description:
+      name: scroll_pos
+      sha256: cebf602b2dd939de6832bb902ffefb574608d1b84f420b82b381a4007d3c1e1b
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.0"
   shared_preferences:
     dependency: "direct main"
     description:
@@ -481,18 +526,18 @@ packages:
     dependency: transitive
     description:
       name: test_api
-      sha256: "93167629bfc610f71560ab9312acdda4959de4df6fac7492c89ff0d3886f6636"
+      sha256: "2a122cbe059f8b610d3a5415f42e255b6c17b1f21eee1d960f31080237fb4f11"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.9"
+    version: "0.7.12"
   vector_math:
     dependency: transitive
     description:
       name: vector_math
-      sha256: d530bd74fea330e6e364cda7a85019c434070188383e1cd8d9777ee586914c5b
+      sha256: f36f9f3be64c6198714492bb455c11056e33e2f85d9a0b676a48301e44fdcf47
       url: "https://pub.dev"
     source: hosted
-    version: "2.2.0"
+    version: "2.4.2"
   vm_service:
     dependency: transitive
     description:
@@ -582,5 +627,5 @@ packages:
     source: hosted
     version: "0.0.4"
 sdks:
-  dart: ">=3.3.0 <4.0.0"
-  flutter: ">=3.19.0"
+  dart: ">=3.11.0 <4.0.0"
+  flutter: ">=3.35.0"
