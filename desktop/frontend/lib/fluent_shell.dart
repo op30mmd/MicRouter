@@ -267,11 +267,12 @@ class _MicVisualizer extends StatefulWidget {
 class _MicVisualizerState extends State<_MicVisualizer> {
   static const int _barCount = 32;
 
-  /// Fixed per-bar envelope: taller in the middle, shorter at the edges.
-  static final List<double> _envelope = List.generate(
-    _barCount,
-    (i) => 0.3 + 0.7 * math.sin(math.pi * i / (_barCount - 1)),
-  );
+  /// Fixed per-bar weights: deliberately irregular (seeded once) so the
+  /// meter reads as a live audio spectrum instead of a smooth hill.
+  static final List<double> _weights = () {
+    final rand = math.Random(1234);
+    return List.generate(_barCount, (_) => 0.25 + 0.75 * rand.nextDouble());
+  }();
 
   late final List<double> _levels = List.filled(_barCount, 0.0);
 
@@ -291,7 +292,7 @@ class _MicVisualizerState extends State<_MicVisualizer> {
     final volume = widget.volumeNotifier.value.clamp(0.0, 1.0);
     setState(() {
       for (var i = 0; i < _barCount; i++) {
-        final target = volume * _envelope[i];
+        final target = volume * _weights[i];
         // Fast attack, slower release for an organic meter feel.
         final rate = target > _levels[i] ? 0.6 : 0.25;
         _levels[i] += (target - _levels[i]) * rate;
