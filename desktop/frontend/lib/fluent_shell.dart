@@ -59,28 +59,32 @@ class _FluentHomeScreenState extends State<FluentHomeScreen> {
   @override
   Widget build(BuildContext context) {
     return NavigationView(
+      // Real title strip, identical in both modes: the hamburger lives here
+      // instead of the pane, so it can never shift or go dead on toggle.
+      // (The library centers the pane toggle in a fixed header row when
+      // expanded but top-aligns it when compact, and reserves a hardcoded
+      // 38px title slot above compact panes — neither has an API override.
+      // A same-height TitleBar fills that slot seamlessly.)
+      titleBar: TitleBar(
+        height: 38,
+        isBackButtonVisible: false,
+        icon: Tooltip(
+          message: 'Toggle navigation',
+          child: IconButton(
+            icon: const Icon(WindowsIcons.global_nav_button),
+            onPressed: _togglePane,
+          ),
+        ),
+        title: const Text('MicRouter PC'),
+      ),
       pane: NavigationPane(
         selected: _selectedIndex,
         onChanged: (index) => setState(() => _selectedIndex = index),
         // Expanded by default so Router/Settings labels stay visible in the
-        // 800x600 window (mirroring the Material rail). The hamburger button
-        // needs an explicit handler: with a fixed display mode the default
-        // toggle only flips the compact overlay, which looks dead — so we
-        // collapse/expand the pane ourselves.
+        // 800x600 window, mirroring the Material rail.
         displayMode: _displayMode,
-        // Extra top padding so the hamburger doesn't sit flush against the
-        // top window frame (the library only pads below the button).
-        toggleButton: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: PaneToggleButton(onPressed: _togglePane),
-        ),
-        header: const Padding(
-          padding: EdgeInsets.only(left: 12, top: 12, bottom: 8),
-          child: Text(
-            'MicRouter',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-          ),
-        ),
+        // No pane toggle button: the strip above owns the only hamburger.
+        toggleButton: null,
         items: [
           PaneItem(
             icon: const Icon(FluentIcons.microphone),
@@ -249,12 +253,22 @@ class _FluentRouterViewState extends State<FluentRouterView> {
   }
 }
 
+/// Perceptual shaping for raw meter samples.
+///
+/// The backend sends linear RMS (`min(rms / 2000, 1.0)`), which maps poorly
+/// to a meter: quiet speech sits near zero while loud speech pins at 1.0.
+/// The power curve lifts quiet/mid levels into visibility while keeping
+/// silence at 0 and full scale at 1.
+double shapeMeterLevel(double sample) {
+  if (!sample.isFinite) return 0.0;
+  return math.pow(sample.clamp(0.0, 1.0), 0.65).toDouble();
+}
+
 /// In-place pulsing bar visualizer for the microphone level.
 ///
 /// Each bar eases toward the latest [volumeNotifier] sample scaled by its
-/// fixed center-weighted envelope, so the bars bounce in place like a mic
-/// meter instead of scrolling. Only this widget rebuilds on meter updates
-/// (~10 Hz).
+/// fixed irregular weight, so the bars bounce in place like a mic meter
+/// instead of scrolling. Only this widget rebuilds on meter updates.
 class _MicVisualizer extends StatefulWidget {
   const _MicVisualizer({required this.volumeNotifier});
 
@@ -274,7 +288,20 @@ class _MicVisualizerState extends State<_MicVisualizer> {
     return List.generate(_barCount, (_) => 0.25 + 0.75 * rand.nextDouble());
   }();
 
+  /// Per-bar ballistics (independent seeds) so bars don't move in lockstep.
+  static final List<double> _attackRates = () {
+    final rand = math.Random(987);
+    return List.generate(_barCount, (_) => 0.45 + 0.30 * rand.nextDouble());
+  }();
+  static final List<double> _releaseRates = () {
+    final rand = math.Random(555);
+    return List.generate(_barCount, (_) => 0.15 + 0.20 * rand.nextDouble());
+  }();
+
   late final List<double> _levels = List.filled(_barCount, 0.0);
+
+  /// Smoothed raw sample: tames backend jitter (~30 Hz) before shaping.
+  double _smooth = 0.0;
 
   @override
   void initState() {
@@ -289,12 +316,16 @@ class _MicVisualizerState extends State<_MicVisualizer> {
   }
 
   void _onVolume() {
-    final volume = widget.volumeNotifier.value.clamp(0.0, 1.0);
+    var raw = widget.volumeNotifier.value;
+    if (!raw.isFinite) raw = 0.0;
+    // Ease the raw sample first, then shape once for all bars.
+    _smooth += (raw.clamp(0.0, 1.0) - _smooth) * 0.5;
+    final shaped = shapeMeterLevel(_smooth);
     setState(() {
       for (var i = 0; i < _barCount; i++) {
-        final target = volume * _weights[i];
+        final target = shaped * _weights[i];
         // Fast attack, slower release for an organic meter feel.
-        final rate = target > _levels[i] ? 0.6 : 0.25;
+        final rate = target > _levels[i] ? _attackRates[i] : _releaseRates[i];
         _levels[i] += (target - _levels[i]) * rate;
       }
     });
@@ -362,20 +393,26 @@ class FluentSettingsView extends StatelessWidget {  const FluentSettingsView({su
                 ],
               ),
               const SizedBox(height: 12),
-              ComboBox<String>(
-                isExpanded: true,
-                placeholder: const Text('Select a speaker...'),
-                value: comboValue,
-                items: controller.devices.map((device) {
-                  return ComboBoxItem<String>(
-                    value: device,
-                    child: Text(
-                      device,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  );
-                }).toList(),
-                onChanged: controller.selectDevice,
+              // No backdrop blur in the dropdown: fluent_ui paints the open
+              // menu with an Acrylic BackdropFilter that re-blurs every
+              // frame while scrolling, which stutters on weaker GPUs and
+              // over RDP. DisableAcrylic swaps it for a solid menu.
+              DisableAcrylic(
+                child: ComboBox<String>(
+                  isExpanded: true,
+                  placeholder: const Text('Select a speaker...'),
+                  value: comboValue,
+                  items: controller.devices.map((device) {
+                    return ComboBoxItem<String>(
+                      value: device,
+                      child: Text(
+                        device,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: controller.selectDevice,
+                ),
               ),
             ],
           ),

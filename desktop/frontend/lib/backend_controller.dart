@@ -21,6 +21,12 @@ class BackendController extends ChangeNotifier {
   // stay silent — so shutdown can never hang, loop forever, or notify after
   // dispose (any of which wedges app close).
   bool _shuttingDown = false;
+  // True after the first successful handshake; retries are hot (250 ms)
+  // until then so a still-starting backend is picked up in milliseconds,
+  // and back off (2 s) afterwards to avoid hammering a dead backend.
+  bool _everConnected = false;
+  // Guards against overlapping connect attempts piling up.
+  bool _connectInFlight = false;
 
   // Volume meter state lives in its own notifier so the ~10 Hz meter updates
   // repaint only the meter (via ValueListenableBuilder) instead of rebuilding
@@ -48,6 +54,14 @@ class BackendController extends ChangeNotifier {
     gainValue = prefs.getDouble('gainValue') ?? 1.0;
     isDarkMode = prefs.getBool('isDarkMode') ?? true;
     selectedDevice = prefs.getString('selectedDevice');
+    // Show the last-known device list instantly instead of an empty
+    // dropdown while the backend boots/scans; the live list replaces it
+    // on connect (stale-while-revalidate).
+    final cached = prefs.getStringList('devicesCache');
+    if (cached != null && cached.isNotEmpty) {
+      devices = dedupeDeviceNames(cached);
+      selectedDevice ??= devices.first;
+    }
 
     // Apply loaded settings
     if (isAiEnabled) toggleAi(isAiEnabled);
@@ -61,6 +75,7 @@ class BackendController extends ChangeNotifier {
     await prefs.setBool('isAiEnabled', isAiEnabled);
     await prefs.setDouble('gainValue', gainValue);
     await prefs.setBool('isDarkMode', isDarkMode);
+    await prefs.setStringList('devicesCache', devices);
     if (selectedDevice != null) {
       await prefs.setString('selectedDevice', selectedDevice!);
     }
@@ -124,8 +139,8 @@ class BackendController extends ChangeNotifier {
       _log("Failed to launch backend: $e");
     }
 
-    // Give it a moment to bind the port
-    await Future.delayed(const Duration(seconds: 1));
+    // Probe the port immediately — no fixed sleep. A ready backend connects
+    // in milliseconds; a still-starting one is picked up by hot retries.
     connectToPython();
   }
 
@@ -159,11 +174,14 @@ class BackendController extends ChangeNotifier {
   }
 
   void connectToPython() async {
-    if (_shuttingDown) return;
+    if (_shuttingDown || _connectInFlight) return;
+    _connectInFlight = true;
     try {
-      _socket = await Socket.connect('127.0.0.1', 5000);
+      _socket = await Socket.connect('127.0.0.1', 5000)
+          .timeout(const Duration(seconds: 1));
       // Small realtime frames (volume meter): don't let Nagle batch them.
       _socket!.setOption(SocketOption.tcpNoDelay, true);
+      _everConnected = true;
       status = "Connected to Engine";
       notifyListeners();
 
@@ -191,12 +209,17 @@ class BackendController extends ChangeNotifier {
       status = "Waiting for Backend...";
       notifyListeners();
       _reconnect();
+    } finally {
+      _connectInFlight = false;
     }
   }
 
   void _reconnect() {
     if (_shuttingDown) return;
-    Future.delayed(const Duration(seconds: 2), connectToPython);
+    final delay = _everConnected
+        ? const Duration(seconds: 2)
+        : const Duration(milliseconds: 250);
+    Future.delayed(delay, connectToPython);
   }
 
   // --- CRITICAL FIX: Handle Fragmented TCP Packets (Byte-level) ---
@@ -233,15 +256,27 @@ class BackendController extends ChangeNotifier {
         return;
       case 'log':
         _log(msg['message']);
-        break;
+        return;
       case 'error':
         _log("ERROR: ${msg['message']}");
-        break;
+        return;
       case 'devices':
-        devices = List<String>.from(msg['payload']);
-        // Auto-select first device if none selected
-        if (devices.isNotEmpty && selectedDevice == null) {
-          selectedDevice = devices.first;
+        devices = dedupeDeviceNames(List<String>.from(msg['payload']));
+        if (devices.isNotEmpty) {
+          if (selectedDevice == null) {
+            // Auto-select first device if none selected
+            selectedDevice = devices.first;
+          } else if (!devices.contains(selectedDevice)) {
+            // Re-resolve a saved selection against the deduped list so a
+            // whitespace/case variant doesn't orphan the saved choice.
+            final want = selectedDevice!.trim().toLowerCase();
+            for (final d in devices) {
+              if (d.trim().toLowerCase() == want) {
+                selectedDevice = d;
+                break;
+              }
+            }
+          }
         }
         break;
     }
@@ -301,5 +336,20 @@ class BackendController extends ChangeNotifier {
 
   void refreshDevices() {
     sendCommand("get_devices");
+  }
+
+  /// Collapse duplicate output-device entries while preserving backend order.
+  ///
+  /// Both backends enumerate every host API, comparing exact names — so the
+  /// same endpoint can arrive twice under near-identical names (trailing
+  /// whitespace or case variants across WASAPI/MME, Pulse/ALSA). Comparison
+  /// is on the normalized name; the first-seen original is kept for display.
+  static List<String> dedupeDeviceNames(List<String> names) {
+    final seen = <String>{};
+    final result = <String>[];
+    for (final name in names) {
+      if (seen.add(name.trim().toLowerCase())) result.add(name);
+    }
+    return result;
   }
 }
