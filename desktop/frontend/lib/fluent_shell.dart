@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:provider/provider.dart';
 
@@ -66,7 +68,12 @@ class _FluentHomeScreenState extends State<FluentHomeScreen> {
         // toggle only flips the compact overlay, which looks dead — so we
         // collapse/expand the pane ourselves.
         displayMode: _displayMode,
-        toggleButton: PaneToggleButton(onPressed: _togglePane),
+        // Extra top padding so the hamburger doesn't sit flush against the
+        // top window frame (the library only pads below the button).
+        toggleButton: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: PaneToggleButton(onPressed: _togglePane),
+        ),
         header: const Padding(
           padding: EdgeInsets.only(left: 12, top: 12, bottom: 8),
           child: Text(
@@ -242,12 +249,12 @@ class _FluentRouterViewState extends State<FluentRouterView> {
   }
 }
 
-/// Scrolling bar visualizer for the microphone level.
+/// In-place pulsing bar visualizer for the microphone level.
 ///
-/// Keeps a rolling history of recent [volumeNotifier] samples and renders
-/// them as bottom-anchored bars, newest on the right — so it reads as a live
-/// audio visualizer instead of a progress fill. Only this widget rebuilds on
-/// meter updates (~10 Hz).
+/// Each bar eases toward the latest [volumeNotifier] sample scaled by its
+/// fixed center-weighted envelope, so the bars bounce in place like a mic
+/// meter instead of scrolling. Only this widget rebuilds on meter updates
+/// (~10 Hz).
 class _MicVisualizer extends StatefulWidget {
   const _MicVisualizer({required this.volumeNotifier});
 
@@ -258,8 +265,15 @@ class _MicVisualizer extends StatefulWidget {
 }
 
 class _MicVisualizerState extends State<_MicVisualizer> {
-  static const int _barCount = 48;
-  late List<double> _history = List.filled(_barCount, 0.0);
+  static const int _barCount = 32;
+
+  /// Fixed per-bar envelope: taller in the middle, shorter at the edges.
+  static final List<double> _envelope = List.generate(
+    _barCount,
+    (i) => 0.3 + 0.7 * math.sin(math.pi * i / (_barCount - 1)),
+  );
+
+  late final List<double> _levels = List.filled(_barCount, 0.0);
 
   @override
   void initState() {
@@ -274,11 +288,14 @@ class _MicVisualizerState extends State<_MicVisualizer> {
   }
 
   void _onVolume() {
+    final volume = widget.volumeNotifier.value.clamp(0.0, 1.0);
     setState(() {
-      _history = [
-        ..._history.skip(1),
-        widget.volumeNotifier.value.clamp(0.0, 1.0),
-      ];
+      for (var i = 0; i < _barCount; i++) {
+        final target = volume * _envelope[i];
+        // Fast attack, slower release for an organic meter feel.
+        final rate = target > _levels[i] ? 0.6 : 0.25;
+        _levels[i] += (target - _levels[i]) * rate;
+      }
     });
   }
 
@@ -290,16 +307,18 @@ class _MicVisualizerState extends State<_MicVisualizer> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          for (final level in _history)
+          for (var i = 0; i < _barCount; i++)
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 1.5),
                 child: FractionallySizedBox(
                   alignment: Alignment.bottomCenter,
-                  heightFactor: level * 0.94 + 0.06,
+                  heightFactor: _levels[i] * 0.94 + 0.06,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.35 + 0.65 * level),
+                      color: accent.withValues(
+                        alpha: 0.35 + 0.65 * _levels[i],
+                      ),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
