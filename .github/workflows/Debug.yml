@@ -1,0 +1,19 @@
+name: Debug with upterm
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355        # just under GitHub's hard 360-min cap
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup upterm session
+        uses: owenthereal/action-upterm@v1
+        with:
+          limit-access-to-actor: true
+          detached: true
+          wait-timeout-minutes: 350
