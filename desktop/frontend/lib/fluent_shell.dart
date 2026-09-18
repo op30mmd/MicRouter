@@ -44,6 +44,15 @@ class FluentHomeScreen extends StatefulWidget {
 
 class _FluentHomeScreenState extends State<FluentHomeScreen> {
   int _selectedIndex = 0;
+  PaneDisplayMode _displayMode = PaneDisplayMode.expanded;
+
+  void _togglePane() {
+    setState(() {
+      _displayMode = _displayMode == PaneDisplayMode.expanded
+          ? PaneDisplayMode.compact
+          : PaneDisplayMode.expanded;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,9 +60,13 @@ class _FluentHomeScreenState extends State<FluentHomeScreen> {
       pane: NavigationPane(
         selected: _selectedIndex,
         onChanged: (index) => setState(() => _selectedIndex = index),
-        // Expanded (not auto/compact) so Router/Settings labels always stay
-        // visible in the 800x600 window, mirroring the Material rail.
-        displayMode: PaneDisplayMode.expanded,
+        // Expanded by default so Router/Settings labels stay visible in the
+        // 800x600 window (mirroring the Material rail). The hamburger button
+        // needs an explicit handler: with a fixed display mode the default
+        // toggle only flips the compact overlay, which looks dead — so we
+        // collapse/expand the pane ourselves.
+        displayMode: _displayMode,
+        toggleButton: PaneToggleButton(onPressed: _togglePane),
         header: const Padding(
           padding: EdgeInsets.only(left: 12, top: 12, bottom: 8),
           child: Text(
@@ -141,38 +154,21 @@ class _FluentRouterViewState extends State<FluentRouterView> {
         ),
         const SizedBox(height: 16),
 
-        // Microphone level — Fluent ProgressBar driven by the same
+        // Microphone level — scrolling bar visualizer driven by the same
         // volumeNotifier (~10 Hz) so only this subtree repaints.
         Card(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
-                  const Icon(FluentIcons.microphone),
-                  const SizedBox(width: 8),
-                  const Text('Microphone Level'),
-                  const Spacer(),
-                  ValueListenableBuilder<double>(
-                    valueListenable: controller.volumeNotifier,
-                    builder: (context, volume, _) {
-                      final pct =
-                          (volume.clamp(0.0, 1.0) * 100).toStringAsFixed(0);
-                      return Text('$pct%');
-                    },
-                  ),
+                  Icon(FluentIcons.microphone),
+                  SizedBox(width: 8),
+                  Text('Microphone Level'),
                 ],
               ),
               const SizedBox(height: 12),
-              ValueListenableBuilder<double>(
-                valueListenable: controller.volumeNotifier,
-                builder: (context, volume, _) {
-                  return ProgressBar(
-                    value: volume.clamp(0.0, 1.0) * 100,
-                    strokeWidth: 8,
-                  );
-                },
-              ),
+              _MicVisualizer(volumeNotifier: controller.volumeNotifier),
             ],
           ),
         ),
@@ -187,7 +183,7 @@ class _FluentRouterViewState extends State<FluentRouterView> {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(FluentIcons.play),
+                  Icon(FluentIcons.play_solid),
                   SizedBox(width: 8),
                   Text('START ROUTING'),
                 ],
@@ -199,7 +195,7 @@ class _FluentRouterViewState extends State<FluentRouterView> {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(FluentIcons.stop),
+                  Icon(FluentIcons.stop_solid),
                   SizedBox(width: 8),
                   Text('STOP'),
                 ],
@@ -246,8 +242,77 @@ class _FluentRouterViewState extends State<FluentRouterView> {
   }
 }
 
-class FluentSettingsView extends StatelessWidget {
-  const FluentSettingsView({super.key});
+/// Scrolling bar visualizer for the microphone level.
+///
+/// Keeps a rolling history of recent [volumeNotifier] samples and renders
+/// them as bottom-anchored bars, newest on the right — so it reads as a live
+/// audio visualizer instead of a progress fill. Only this widget rebuilds on
+/// meter updates (~10 Hz).
+class _MicVisualizer extends StatefulWidget {
+  const _MicVisualizer({required this.volumeNotifier});
+
+  final ValueNotifier<double> volumeNotifier;
+
+  @override
+  State<_MicVisualizer> createState() => _MicVisualizerState();
+}
+
+class _MicVisualizerState extends State<_MicVisualizer> {
+  static const int _barCount = 48;
+  late List<double> _history = List.filled(_barCount, 0.0);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.volumeNotifier.addListener(_onVolume);
+  }
+
+  @override
+  void dispose() {
+    widget.volumeNotifier.removeListener(_onVolume);
+    super.dispose();
+  }
+
+  void _onVolume() {
+    setState(() {
+      _history = [
+        ..._history.skip(1),
+        widget.volumeNotifier.value.clamp(0.0, 1.0),
+      ];
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = FluentTheme.of(context).accentColor;
+    return SizedBox(
+      height: 110,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (final level in _history)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                child: FractionallySizedBox(
+                  alignment: Alignment.bottomCenter,
+                  heightFactor: level * 0.94 + 0.06,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.35 + 0.65 * level),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class FluentSettingsView extends StatelessWidget {  const FluentSettingsView({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -271,7 +336,7 @@ class FluentSettingsView extends StatelessWidget {
                   const SizedBox(width: 8),
                   const Expanded(child: Text('Output Device')),
                   IconButton(
-                    icon: const Icon(FluentIcons.refresh, size: 14),
+                    icon: const Icon(FluentIcons.refresh),
                     onPressed: controller.refreshDevices,
                   ),
                 ],
@@ -299,7 +364,7 @@ class FluentSettingsView extends StatelessWidget {
 
         // Appearance.
         Expander(
-          leading: const Icon(FluentIcons.brightness),
+          leading: const Icon(FluentIcons.sunny),
           header: const Text('Dark Mode'),
           trailing: ToggleSwitch(
             checked: controller.isDarkMode,
