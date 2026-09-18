@@ -1,0 +1,111 @@
+# Build the native C++ backend for Windows and bundle it with the Flutter app.
+#
+# This is the follow-up to the Python pipeline: the same `flutter build windows`
+# output is produced, but instead of PyInstaller we compile the C++ backend and
+# ship it next to the Flutter executable as backend/microuter_backend_cpp.exe.
+# RNNoise is compiled and copied alongside the executable so the backend can
+# load it at runtime (the same files the Python build downloaded, just compiled
+# here as a DLL instead of being packaged into PyInstaller).
+#
+# The resulting zip/installer are uploaded with a "-cpp" suffix so they can
+# coexist with the Python releases while the C++ port is validated.
+
+name: Build and Release (Windows, C++ backend)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-cpp:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Enable Windows Desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Repair Windows Scaffolding
+        working-directory: desktop/frontend
+        run: flutter create --platforms=windows .
+
+      - name: Build Flutter Windows App
+        working-directory: desktop/frontend
+        shell: bash
+        run: flutter build windows --release
+
+      - name: Compile RNNoise DLL
+        shell: bash
+        run: |
+          mkdir rnnoise_build && cd rnnoise_build
+
+          # Pinned to the same upstream commit as the Python workflow.
+          rnnoise_ref="6cbfd53eb348a8d394e0757b4025c6ded34eb2b6"
+          base_src="https://raw.githubusercontent.com/xiph/rnnoise/$rnnoise_ref/src"
+          base_inc="https://raw.githubusercontent.com/xiph/rnnoise/$rnnoise_ref/include"
+
+          curl -O $base_inc/rnnoise.h
+          curl -O $base_src/celt_lpc.h
+          curl -O $base_src/kiss_fft.h
+          curl -O $base_src/pitch.h
+          curl -O $base_src/rnn.h
+          curl -O $base_src/rnn_data.h
+          curl -O $base_src/tansig_table.h
+          curl -O $base_src/_kiss_fft_guts.h
+          curl -O $base_src/arch.h
+          curl -O $base_src/common.h
+          curl -O $base_src/opus_types.h
+
+          curl -O $base_src/celt_lpc.c
+          curl -O $base_src/denoise.c
+          curl -O $base_src/kiss_fft.c
+          curl -O $base_src/pitch.c
+          curl -O $base_src/rnn.c
+          curl -O $base_src/rnn_data.c
+
+          gcc -shared -o rnnoise.dll -O3 -std=gnu99 \
+              -D_USE_MATH_DEFINES \
+              celt_lpc.c denoise.c kiss_fft.c pitch.c rnn.c rnn_data.c \
+              -I.
+
+      - name: Build C++ Backend
+        shell: bash
+        run: |
+          cd desktop/backend_cpp
+          # CMake + FetchContent build (PortAudio is fetched and compiled from
+          # its own CMake rules; works with the MSVC/Visual Studio generator).
+          cmake -B build_cpp -G "Visual Studio 17 2022" -A x64
+          cmake --build build_cpp --config Release --target microuter_backend
+          cp build_cpp/Release/microuter_backend.exe microuter_backend_cpp.exe
+
+      - name: Assemble Release Folder
+        shell: bash
+        run: |
+          mkdir release_package
+          cp -r desktop/frontend/build/windows/x64/runner/Release/* release_package/
+
+          mkdir release_package/backend
+          cp desktop/backend_cpp/microuter_backend_cpp.exe release_package/backend/
+          cp rnnoise_build/rnnoise.dll release_package/backend/
+
+      - name: Zip Release
+        uses: thedoctor0/zip-release@0.7.6
+        with:
+          type: 'zip'
+          filename: 'MicRouter-PC-Windows-CppBackend.zip'
+          directory: 'release_package'
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MicRouter-PC-Windows-CppBackend
+          path: release_package/MicRouter-PC-Windows-CppBackend.zip
