@@ -200,6 +200,9 @@ struct BackendServer::Impl {
 
   std::atomic<bool> is_streaming{false};
   std::thread audio_thread;
+  // Phone socket owned by the audio thread; published so StopStreaming() can
+  // wake a thread blocked in recv(). Only the audio thread closes it.
+  std::atomic<Sock> phone_socket{kInvalidSocket};
 
   AudioOutput audio;
 
@@ -230,6 +233,7 @@ struct BackendServer::Impl {
 
   void HandleCommand(const std::string& request);
   void StartStreaming(const std::string& device_name, int port);
+  void StopStreaming();
   void ToggleRnnoise(bool enable);
 
   bool SetupAdb(int port);
@@ -505,7 +509,7 @@ void BackendServer::Impl::HandleCommand(const std::string& request) {
   }
 
   if (cmd == "stop") {
-    is_streaming = false;
+    StopStreaming();
     return;
   }
 }
@@ -531,10 +535,31 @@ void BackendServer::Impl::ToggleRnnoise(bool enable) {
 // Audio stream thread
 // ---------------------------------------------------------------------------
 void BackendServer::Impl::StartStreaming(const std::string& device_name, int port) {
+  // Reap any previous thread (e.g. after a phone-side disconnect, which ends
+  // the thread without a "stop"). Assigning over a joinable thread would call
+  // std::terminate() and kill the backend — that was the restart bug.
+  if (audio_thread.joinable()) audio_thread.join();
   is_streaming = true;
   audio_thread = std::thread([this, device_name, port] {
     AudioStreamThread(device_name, port);
   });
+}
+
+void BackendServer::Impl::StopStreaming() {
+  is_streaming = false;
+  // Unblock the audio thread if it is sitting in recv(): shutdown() wakes a
+  // blocking recv on both Winsock and POSIX (the thread still owns the
+  // close), so the join below returns promptly instead of after the 10 s
+  // receive timeout.
+  Sock fd = phone_socket.exchange(kInvalidSocket);
+  if (fd != kInvalidSocket) {
+#if defined(_WIN32)
+    ::shutdown(fd, SD_BOTH);
+#else
+    ::shutdown(fd, SHUT_RDWR);
+#endif
+  }
+  if (audio_thread.joinable()) audio_thread.join();
 }
 
 void BackendServer::Impl::AudioStreamThread(const std::string& device_name, int port) {
@@ -600,6 +625,9 @@ void BackendServer::Impl::AudioStreamThread(const std::string& device_name, int 
     SendVolume(0.0f);
     return;
   }
+
+  // Publish the live socket so StopStreaming() can wake us out of recv().
+  phone_socket = sock;
 
   SendMessage("log", "[*] Connected! Performing handshake...");
 
@@ -786,6 +814,7 @@ void BackendServer::Impl::AudioStreamThread(const std::string& device_name, int 
 
 cleanup:
   if (stream_open) audio.Close();
+  phone_socket = kInvalidSocket;
   if (sock != kInvalidSocket) {
 #if defined(_WIN32)
     closesocket(sock);
@@ -809,8 +838,7 @@ BackendServer::BackendServer() : impl_(new Impl) {}
 
 BackendServer::~BackendServer() {
   if (impl_) {
-    impl_->is_streaming = false;
-    if (impl_->audio_thread.joinable()) impl_->audio_thread.join();
+    impl_->StopStreaming();
     if (impl_->rnnoise.available()) impl_->rnnoise.Destroy();
     if (impl_->server_socket != kInvalidSocket) {
 #if defined(_WIN32)

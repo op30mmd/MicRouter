@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -38,6 +39,10 @@ class BackendController extends ChangeNotifier {
   Socket? _socket;
   Process? _pythonProcess;
   String status = "Initializing...";
+  // Once set, no new connects/reconnects are scheduled and socket callbacks
+  // stay silent — so shutdown can never hang, loop forever, or notify after
+  // dispose (any of which wedges app close).
+  bool _shuttingDown = false;
 
   // Volume meter state lives in its own notifier so the ~10 Hz meter updates
   // repaint only the meter (via ValueListenableBuilder) instead of rebuilding
@@ -145,25 +150,35 @@ class BackendController extends ChangeNotifier {
 
   @override
   void dispose() {
-    shutdown();
+    unawaited(shutdown());
     volumeNotifier.dispose();
     super.dispose();
   }
 
   /// Terminates the connection and the spawned backend process so no orphan
   /// keeps holding port 5000 after the app goes away.
-  void shutdown() {
+  Future<void> shutdown() async {
+    _shuttingDown = true;
     try {
       _socket?.destroy();
     } catch (_) {}
     _socket = null;
-    try {
-      _pythonProcess?.kill();
-    } catch (_) {}
+    final proc = _pythonProcess;
     _pythonProcess = null;
+    if (proc != null) {
+      // Clean exit first (stdin EOF trips the backend's parent watchdog),
+      // then the hammer in case it is stuck somewhere.
+      try {
+        await proc.stdin.close();
+      } catch (_) {}
+      try {
+        proc.kill();
+      } catch (_) {}
+    }
   }
 
   void connectToPython() async {
+    if (_shuttingDown) return;
     try {
       _socket = await Socket.connect('127.0.0.1', 5000);
       // Small realtime frames (volume meter): don't let Nagle batch them.
@@ -177,12 +192,14 @@ class BackendController extends ChangeNotifier {
       _socket!.listen(
         _onDataReceived,
         onDone: () {
+          if (_shuttingDown) return;
           status = "Backend Disconnected";
           _socket = null;
           notifyListeners();
           _reconnect();
         },
         onError: (e) {
+          if (_shuttingDown) return;
           status = "Connection Error";
           _socket = null;
           notifyListeners();
@@ -197,6 +214,7 @@ class BackendController extends ChangeNotifier {
   }
 
   void _reconnect() {
+    if (_shuttingDown) return;
     Future.delayed(const Duration(seconds: 2), connectToPython);
   }
 
@@ -327,10 +345,21 @@ class _MyAppState extends State<MyApp> with WindowListener {
 
   @override
   void onWindowClose() async {
+    // Every step is timeout-guarded and destroy() is guaranteed: with
+    // preventClose, anything hanging before destroy() freezes the window.
+    // The trailing exit() is unreachable on success — it only fires if
+    // destroy() failed to take, so the app can never linger or wedge shut.
     final controller = Provider.of<BackendController>(context, listen: false);
-    await controller.saveSettings();
-    controller.shutdown();
-    await windowManager.destroy();
+    try {
+      await controller.saveSettings().timeout(const Duration(seconds: 3));
+    } catch (_) {}
+    try {
+      await controller.shutdown().timeout(const Duration(seconds: 3));
+    } catch (_) {}
+    try {
+      await windowManager.destroy().timeout(const Duration(seconds: 3));
+    } catch (_) {}
+    exit(0);
   }
 
   ThemeData _buildTheme(bool isDark) {
