@@ -13,6 +13,10 @@
 name: Build and Release (Windows, C++ backend)
 
 on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
   workflow_dispatch:
 
 permissions:
@@ -87,10 +91,16 @@ jobs:
         run: |
           cd desktop/backend_cpp
           # CMake + FetchContent build (PortAudio is fetched and compiled from
-          # its own CMake rules; works with the MSVC/Visual Studio generator).
-          cmake -B build_cpp -G "Visual Studio 17 2022" -A x64
+          # its own CMake rules). No -G flag: use CMake's default generator so
+          # the build tracks whatever Visual Studio version the runner has
+          # (a hardcoded "Visual Studio 17 2022" breaks when the image moves on).
+          cmake -B build_cpp
           cmake --build build_cpp --config Release --target microuter_backend
-          cp build_cpp/Release/microuter_backend.exe microuter_backend_cpp.exe
+          if [ -f build_cpp/Release/microuter_backend.exe ]; then
+            cp build_cpp/Release/microuter_backend.exe microuter_backend_cpp.exe
+          else
+            cp build_cpp/microuter_backend.exe microuter_backend_cpp.exe
+          fi
 
       - name: Assemble Release Folder
         shell: bash

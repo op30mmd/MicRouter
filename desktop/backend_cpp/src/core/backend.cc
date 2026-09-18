@@ -66,11 +66,13 @@ using Sock = int;
 
 #if defined(_WIN32)
 using SocketLen = int;
-constexpr Sock kInvalidSocket = INVALID_SOCKET;
 #else
 using SocketLen = socklen_t;
-constexpr Sock kInvalidSocket = -1;
 #endif
+// Invalid socket value: -1 on POSIX; on Windows INVALID_SOCKET is ~0, which
+// truncates to -1 in our int handle type (real handles are small and positive).
+// Spelled as -1 so MSVC never sees a 64-bit -> int narrowing conversion here.
+constexpr Sock kInvalidSocket = -1;
 
 // ---- tiny JSON emitter -----------------------------------------------------
 void EscapeJson(const std::string& in, std::string* out) {
@@ -152,7 +154,10 @@ RunResult RunProcess(const std::vector<std::string>& argv) {
     cmdline += a;
   }
   HANDLE rd, wr;
-  SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
+  SECURITY_ATTRIBUTES sa{};
+  sa.nLength = static_cast<DWORD>(sizeof(sa));
+  sa.lpSecurityDescriptor = nullptr;
+  sa.bInheritHandle = TRUE;
   if (!CreatePipe(&rd, &wr, &sa, 0)) return r;
   SetHandleInformation(rd, HANDLE_FLAG_INHERIT, 0);
 
