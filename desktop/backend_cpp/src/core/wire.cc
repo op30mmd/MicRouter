@@ -17,6 +17,7 @@
 #  include <ws2tcpip.h>
 #else
 #  include <arpa/inet.h>
+#  include <fcntl.h>
 #  include <netinet/in.h>
 #  include <netinet/tcp.h>
 #  include <sys/socket.h>
@@ -87,6 +88,32 @@ void SetReceiveTimeout(int fd, int seconds) {
   tv.tv_sec = seconds;
   tv.tv_usec = 0;
   setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+#endif
+}
+
+void FlushSocket(int fd) {
+  // Switch to non-blocking, drain everything pending, switch back.
+#if defined(_WIN32)
+  u_long non_blocking = 1;
+  if (ioctlsocket(fd, FIONBIO, &non_blocking) != 0) return;
+#else
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags == -1) return;
+  if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) return;
+#endif
+
+  char tmp[4096];
+  for (;;) {
+    int r = recv(fd, tmp, sizeof(tmp), 0);
+    if (r > 0) continue;
+    break;  // 0 == closed, <0 == empty (or error): either way, stop draining.
+  }
+
+#if defined(_WIN32)
+  u_long blocking = 0;
+  ioctlsocket(fd, FIONBIO, &blocking);
+#else
+  fcntl(fd, F_SETFL, flags);
 #endif
 }
 

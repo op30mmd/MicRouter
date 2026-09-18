@@ -408,6 +408,7 @@ class BackendServer:
             # --- STREAM LOOP ---
             consecutive_errors = 0
             max_consecutive_errors = 5
+            last_vol_time = 0.0
             
             while self.is_streaming:
                 try:
@@ -449,10 +450,13 @@ class BackendServer:
                         audio_array = np.clip(audio_array * self.current_gain, -32768, 32767).astype(np.int16)
                         final_data = audio_array.tobytes()
 
-                    # Send RMS to UI (Throttle to avoid flooding socket)
-                    if len(audio_array) > 0 and int(time.time() * 20) % 2 == 0:
+                    # Send RMS to UI (steady ~10 Hz throttle; the old
+                    # wall-clock-slot check sent bursts and starved the meter)
+                    now = time.monotonic()
+                    if len(audio_array) > 0 and now - last_vol_time >= 0.1:
                         rms = np.sqrt(np.mean(audio_array.astype(float)**2))
                         self.send_to_flutter({"type": "volume", "value": min(rms / 2000, 1.0)})
+                        last_vol_time = now
                     
                     stream.write(final_data)
                     

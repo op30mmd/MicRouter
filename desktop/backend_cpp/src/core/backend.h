@@ -56,6 +56,11 @@ ReadStatus ReadExactly(int fd, uint8_t* dst, size_t n);
 bool WriteInt32BE(int fd, int32_t value);
 bool WriteAll(int fd, const void* data, size_t n);
 void SetReceiveTimeout(int fd, int seconds);
+// Drains whatever the peer already sent without blocking, then restores
+// blocking mode. Used once right before the stream loop so playback starts
+// from "now" instead of replaying the backlog that piled up while the audio
+// device was opening (mirrors backend.py's "Flush Startup Lag" step).
+void FlushSocket(int fd);
 
 // ---- Backend ---------------------------------------------------------------
 

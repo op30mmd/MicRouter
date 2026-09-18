@@ -106,38 +106,6 @@ std::string JsonObj(const char* type, const char* key, const std::string& value)
   return s;
 }
 
-// Ring of recently written int16 samples for volume/visualiser reporting.
-class SimpleRingBuffer {
- public:
-  void Push(const int16_t* data, size_t frames) {
-    for (size_t i = 0; i < frames; ++i) {
-      buf_[pos_] = data[i];
-      pos_ = (pos_ + 1) % kSize;
-      if (count_ < kSize) count_++;
-    }
-  }
-
-  float Rms() const {
-    if (count_ == 0) return 0.0f;
-    double acc = 0.0;
-    for (size_t i = 0; i < count_; ++i) {
-      acc += static_cast<double>(buf_[i]) * buf_[i];
-    }
-    return static_cast<float>(std::sqrt(acc / count_));
-  }
-
-  void Clear() {
-    count_ = 0;
-    pos_ = 0;
-  }
-
- private:
-  static constexpr size_t kSize = 4096;
-  int16_t buf_[kSize] = {};
-  size_t pos_ = 0;
-  size_t count_ = 0;
-};
-
 // ---- command shim: runs a process and captures stdout ----------------------
 struct RunResult {
   bool ok = false;
@@ -249,8 +217,6 @@ struct BackendServer::Impl {
 
   std::mutex mutex;        // guards devices / client_socket bookkeeping
   std::mutex send_mutex;   // serialises full JSON frames on the UI socket
-
-  SimpleRingBuffer volume_ring;
 
   // Linux virtual-microphone bookkeeping (PulseAudio module ids).
   std::vector<std::string> linux_modules;
@@ -720,9 +686,14 @@ void BackendServer::Impl::AudioStreamThread(const std::string& device_name, int 
     int consecutive_errors = 0;
     const int max_consecutive_errors = 5;
 
-    volume_ring.Clear();
     auto last_vol_time = std::chrono::steady_clock::now();
     float last_vol = 0.0f;
+
+    // Flush Startup Lag (mirrors backend.py OPTIMIZATION 3): drain whatever
+    // arrived while the audio device was opening so playback starts from
+    // "now" instead of replaying stale backlog as a fixed delay.
+    FlushSocket(sock);
+    SendMessage("log", "[*] Streaming audio...");
 
     // backend.py: sock.settimeout(10) before the stream loop so a "stop"
     // command is honoured within ~10s even if the phone goes silent.
@@ -786,12 +757,17 @@ void BackendServer::Impl::AudioStreamThread(const std::string& device_name, int 
           out[i] = static_cast<int16_t>(v);
         }
 
-        // Volume reporting (throttled to ~10 Hz).
+        // Volume reporting (throttled to ~10 Hz). RMS is computed on the
+        // current chunk only: the old 4096-sample ring held up to ~800 ms of
+        // history and made the meter trail the audio noticeably.
         auto now = std::chrono::steady_clock::now();
         double ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_vol_time).count();
         if (ms >= 100.0) {
-          volume_ring.Push(out, out_count);
-          float rms = volume_ring.Rms();
+          double acc = 0.0;
+          for (size_t i = 0; i < out_count; ++i) {
+            acc += static_cast<double>(out[i]) * out[i];
+          }
+          float rms = out_count > 0 ? static_cast<float>(std::sqrt(acc / out_count)) : 0.0f;
           float normalized = std::min(rms / 2000.0f, 1.0f);
           if (normalized != last_vol) {
             SendVolume(normalized);

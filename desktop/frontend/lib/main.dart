@@ -39,7 +39,12 @@ class BackendController extends ChangeNotifier {
   Process? _pythonProcess;
   String status = "Initializing...";
 
-  double currentVolume = 0.0;
+  // Volume meter state lives in its own notifier so the ~10 Hz meter updates
+  // repaint only the meter (via ValueListenableBuilder) instead of rebuilding
+  // the whole app through notifyListeners() — that full rebuild is what made
+  // the visualizer stutter and lag behind the audio.
+  final ValueNotifier<double> volumeNotifier = ValueNotifier(0.0);
+  double get currentVolume => volumeNotifier.value;
   double gainValue = 1.0;
   bool isAiEnabled = false;
   bool isDarkMode = true;
@@ -142,6 +147,7 @@ class BackendController extends ChangeNotifier {
   void dispose() {
     _socket?.destroy();
     _pythonProcess?.kill();
+    volumeNotifier.dispose();
     super.dispose();
   }
 
@@ -210,8 +216,8 @@ class BackendController extends ChangeNotifier {
         status = msg['payload'];
         break;
       case 'volume':
-        currentVolume = (msg['value'] as num).toDouble();
-        break;
+        volumeNotifier.value = (msg['value'] as num).toDouble();
+        return;
       case 'log':
         _log(msg['message']);
         break;
@@ -467,17 +473,22 @@ class _RouterViewState extends State<RouterView> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: controller.currentVolume.clamp(0.0, 1.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [
-                        Theme.of(context).colorScheme.primary,
-                        Theme.of(context).colorScheme.secondary,
-                      ]),
-                    ),
-                  ),
+                child: ValueListenableBuilder<double>(
+                  valueListenable: controller.volumeNotifier,
+                  builder: (context, volume, _) {
+                    return FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: volume.clamp(0.0, 1.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: [
+                            Theme.of(context).colorScheme.primary,
+                            Theme.of(context).colorScheme.secondary,
+                          ]),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
