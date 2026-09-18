@@ -145,15 +145,29 @@ class BackendController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _socket?.destroy();
-    _pythonProcess?.kill();
+    shutdown();
     volumeNotifier.dispose();
     super.dispose();
+  }
+
+  /// Terminates the connection and the spawned backend process so no orphan
+  /// keeps holding port 5000 after the app goes away.
+  void shutdown() {
+    try {
+      _socket?.destroy();
+    } catch (_) {}
+    _socket = null;
+    try {
+      _pythonProcess?.kill();
+    } catch (_) {}
+    _pythonProcess = null;
   }
 
   void connectToPython() async {
     try {
       _socket = await Socket.connect('127.0.0.1', 5000);
+      // Small realtime frames (volume meter): don't let Nagle batch them.
+      _socket!.setOption(SocketOption.tcpNoDelay, true);
       status = "Connected to Engine";
       notifyListeners();
 
@@ -315,6 +329,7 @@ class _MyAppState extends State<MyApp> with WindowListener {
   void onWindowClose() async {
     final controller = Provider.of<BackendController>(context, listen: false);
     await controller.saveSettings();
+    controller.shutdown();
     await windowManager.destroy();
   }
 

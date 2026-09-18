@@ -757,12 +757,12 @@ void BackendServer::Impl::AudioStreamThread(const std::string& device_name, int 
           out[i] = static_cast<int16_t>(v);
         }
 
-        // Volume reporting (throttled to ~10 Hz). RMS is computed on the
-        // current chunk only: the old 4096-sample ring held up to ~800 ms of
-        // history and made the meter trail the audio noticeably.
+        // Volume reporting at ~30 Hz. RMS is computed on the current chunk
+        // only: the old 4096-sample ring held up to ~800 ms of history and
+        // made the meter trail the audio noticeably.
         auto now = std::chrono::steady_clock::now();
         double ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_vol_time).count();
-        if (ms >= 100.0) {
+        if (ms >= 33.0) {
           double acc = 0.0;
           for (size_t i = 0; i < out_count; ++i) {
             acc += static_cast<double>(out[i]) * out[i];
@@ -862,12 +862,27 @@ int BackendServer::Run() {
 
   impl.server_socket = srv;
 
+  // Parent watchdog (parity with backend.py): Flutter spawns us with a piped
+  // stdin; when it goes away the pipe hits EOF and we exit instead of
+  // lingering on :5000 as an orphan that blocks the next launch.
+  std::thread([] {
+    char c;
+    for (;;) {
+      if (std::fread(&c, 1, 1, stdin) != 1) std::exit(0);
+    }
+  }).detach();
+
   for (;;) {
     sockaddr_in peer{};
     SocketLen plen = sizeof(peer);
     Sock client = accept(srv, reinterpret_cast<sockaddr*>(&peer), &plen);
     if (client == kInvalidSocket) continue;
     {
+      // Small realtime frames (volume meter, status): don't let Nagle hold
+      // them back — that showed up as a laggy, bursty visualizer.
+      int no_delay = 1;
+      setsockopt(client, IPPROTO_TCP, TCP_NODELAY,
+                 reinterpret_cast<const char*>(&no_delay), sizeof(no_delay));
       std::lock_guard<std::mutex> lock(impl.mutex);
       impl.client_socket = client;
     }

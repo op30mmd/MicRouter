@@ -60,6 +60,12 @@ class BackendServer:
         try:
             while True:
                 self.client_socket, addr = self.server_socket.accept()
+                # Small realtime frames (volume meter, status): don't let
+                # Nagle hold them back — that showed up as a laggy visualizer.
+                try:
+                    self.client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                except Exception:
+                    pass
                 print(f"[*] UI Connected: {addr}")
                 self.handle_ui_connection()
         except KeyboardInterrupt:
@@ -450,10 +456,10 @@ class BackendServer:
                         audio_array = np.clip(audio_array * self.current_gain, -32768, 32767).astype(np.int16)
                         final_data = audio_array.tobytes()
 
-                    # Send RMS to UI (steady ~10 Hz throttle; the old
-                    # wall-clock-slot check sent bursts and starved the meter)
+                    # Send RMS to UI at ~30 Hz (steady monotonic throttle; the
+                    # old wall-clock-slot check sent bursts and starved the meter)
                     now = time.monotonic()
-                    if len(audio_array) > 0 and now - last_vol_time >= 0.1:
+                    if len(audio_array) > 0 and now - last_vol_time >= 0.033:
                         rms = np.sqrt(np.mean(audio_array.astype(float)**2))
                         self.send_to_flutter({"type": "volume", "value": min(rms / 2000, 1.0)})
                         last_vol_time = now
