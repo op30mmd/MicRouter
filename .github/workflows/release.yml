@@ -1,3 +1,19 @@
+# Single build-and-release pipeline for every platform.
+#
+# Android:  Gradle release APK.
+# Windows:  Flutter app + native C++ backend (backend/microuter_backend_cpp.exe)
+#           + RNNoise DLL, shipped as a zip and an Inno Setup installer.
+# Linux:    Flutter app + native C++ backend + librnnoise.so, shipped as a
+#           .deb and an AppImage.
+#
+# The C++ backend (desktop/backend_cpp) is the shipped engine on both desktop
+# platforms; the Flutter frontend launches it in preference to the legacy
+# Python backend. RNNoise is pinned to one upstream commit and compiled here so
+# the backend can load it at runtime.
+#
+# Pushes to master bump the version tag and publish a GitHub release with all
+# artifacts; pull requests and manual runs only build.
+
 name: Build and Release
 
 on:
@@ -9,6 +25,10 @@ on:
 
 permissions:
   contents: write
+
+env:
+  # xiph/rnnoise commit compiled on every platform (reproducible builds).
+  RNNOISE_REF: 6cbfd53eb348a8d394e0757b4025c6ded34eb2b6
 
 jobs:
   compute_version:
@@ -62,37 +82,8 @@ jobs:
           name: microuter-apk
           path: android/app/build/outputs/apk/release/app-release.apk
 
-  test-python:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install Dependencies
-        run: |
-          # Install system header for PyAudio (PortAudio) on Linux
-          sudo apt-get install -y portaudio19-dev
-          pip install -r desktop/backend/requirements-dev.txt
-
-      - name: Run Linter (Flake8)
-        run: |
-          # Check for syntax errors (E9) and undefined names (F63, F7, F82)
-          # We ignore line length (E501) because UI code often has long lines
-          flake8 desktop/backend --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 desktop/backend --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-      - name: Run Unit Tests
-        run: |
-          # Run the tests we created in Step 2
-          python -m unittest discover -s desktop/backend/tests -p "test_*.py"
-
   build-windows:
-    needs: [compute_version, test-python]
+    needs: compute_version
     runs-on: windows-latest
     env:
       APP_VERSION: ${{ needs.compute_version.outputs.version }}
@@ -109,6 +100,8 @@ jobs:
       - name: Enable Windows Desktop
         run: flutter config --enable-windows-desktop
 
+      # Fills in any template file missing from the checkout; files that are
+      # committed (the customised runner, the app icon) are left untouched.
       - name: Repair Windows Scaffolding
         working-directory: desktop/frontend
         run: flutter create --platforms=windows .
@@ -121,14 +114,10 @@ jobs:
       - name: Compile RNNoise DLL
         shell: bash
         run: |
-          mkdir rnnoise_build
-          cd rnnoise_build
+          mkdir rnnoise_build && cd rnnoise_build
 
-          # Pinned to a specific upstream commit so the build is reproducible
-          # and doesn't break if xiph/rnnoise's master branch changes shape.
-          rnnoise_ref="6cbfd53eb348a8d394e0757b4025c6ded34eb2b6"
-          base_src="https://raw.githubusercontent.com/xiph/rnnoise/$rnnoise_ref/src"
-          base_inc="https://raw.githubusercontent.com/xiph/rnnoise/$rnnoise_ref/include"
+          base_src="https://raw.githubusercontent.com/xiph/rnnoise/$RNNOISE_REF/src"
+          base_inc="https://raw.githubusercontent.com/xiph/rnnoise/$RNNOISE_REF/include"
 
           curl -O $base_inc/rnnoise.h
           curl -O $base_src/celt_lpc.h
@@ -149,37 +138,43 @@ jobs:
           curl -O $base_src/rnn.c
           curl -O $base_src/rnn_data.c
 
+          # gcc (MinGW) rather than MSVC: RNNoise uses C99 VLAs, which cl.exe
+          # rejects.
           gcc -shared -o rnnoise.dll -O3 -std=gnu99 \
               -D_USE_MATH_DEFINES \
               celt_lpc.c denoise.c kiss_fft.c pitch.c rnn.c rnn_data.c \
               -I.
 
-          cd ..
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          python-version: '3.10'
+          arch: x64
 
-      - name: Install Backend Build Dependencies
-        run: pip install -r desktop/backend/requirements-dev.txt
-
-      - name: Build Backend Executable
+      - name: Build C++ Backend
         shell: bash
         run: |
-          pyinstaller --onefile --name microuter_backend \
-            --add-binary "$GITHUB_WORKSPACE/rnnoise_build/rnnoise.dll;libs" \
-            --distpath dist_backend --workpath build_backend --specpath build_backend \
-            desktop/backend/backend.py
+          cd desktop/backend_cpp
+          # CMake + FetchContent build (PortAudio is fetched and compiled from
+          # its own CMake rules). No -G flag: use CMake's default generator so
+          # the build tracks whatever Visual Studio version the runner has
+          # (a hardcoded "Visual Studio 17 2022" breaks when the image moves on).
+          cmake -B build_cpp
+          cmake --build build_cpp --config Release --target microuter_backend
+          if [ -f build_cpp/Release/microuter_backend.exe ]; then
+            cp build_cpp/Release/microuter_backend.exe microuter_backend_cpp.exe
+          else
+            cp build_cpp/microuter_backend.exe microuter_backend_cpp.exe
+          fi
 
       - name: Assemble Release Folder
+        shell: bash
         run: |
           mkdir release_package
-
           cp -r desktop/frontend/build/windows/x64/runner/Release/* release_package/
 
           mkdir release_package/backend
-          cp dist_backend/microuter_backend.exe release_package/backend/
+          cp desktop/backend_cpp/microuter_backend_cpp.exe release_package/backend/
+          cp rnnoise_build/rnnoise.dll release_package/backend/
 
       - name: Zip Release
         uses: thedoctor0/zip-release@0.7.6
@@ -229,7 +224,7 @@ jobs:
           path: MicRouter-Installer.exe
 
   build-linux:
-    needs: [compute_version, test-python]
+    needs: compute_version
     runs-on: ubuntu-24.04
     env:
       APP_VERSION: ${{ needs.compute_version.outputs.version }}
@@ -246,22 +241,19 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libgtk-3-dev libportaudio2 portaudio19-dev liblzma-dev libstdc++-12-dev
+          sudo apt-get install -y ninja-build libgtk-3-dev libportaudio2 portaudio19-dev \
+            liblzma-dev libstdc++-12-dev cmake build-essential pkg-config
 
       - name: Build Flutter Linux App
         working-directory: desktop/frontend
         run: flutter build linux --release --build-name=$APP_VERSION --build-number=${{ github.run_number }}
 
-      - name: Compile RNNoise Library (Linux)
+      - name: Compile RNNoise Library
         run: |
-          mkdir rnnoise_build
-          cd rnnoise_build
+          mkdir rnnoise_build && cd rnnoise_build
 
-          # Pinned to a specific upstream commit so the build is reproducible
-          # and doesn't break if xiph/rnnoise's master branch changes shape.
-          rnnoise_ref="6cbfd53eb348a8d394e0757b4025c6ded34eb2b6"
-          base_src="https://raw.githubusercontent.com/xiph/rnnoise/$rnnoise_ref/src"
-          base_inc="https://raw.githubusercontent.com/xiph/rnnoise/$rnnoise_ref/include"
+          base_src="https://raw.githubusercontent.com/xiph/rnnoise/$RNNOISE_REF/src"
+          base_inc="https://raw.githubusercontent.com/xiph/rnnoise/$RNNOISE_REF/include"
 
           curl -O $base_inc/rnnoise.h
           curl -O $base_src/celt_lpc.h
@@ -282,46 +274,37 @@ jobs:
           curl -O $base_src/rnn.c
           curl -O $base_src/rnn_data.c
 
-          gcc -shared -o rnnoise.so -O3 -fPIC -std=gnu99 \
+          gcc -shared -o librnnoise.so -O3 -fPIC -std=gnu99 \
               -D_GNU_SOURCE -D_USE_MATH_DEFINES \
               celt_lpc.c denoise.c kiss_fft.c pitch.c rnn.c rnn_data.c \
               -I. -lm
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install Backend Build Dependencies
-        run: pip install -r desktop/backend/requirements-dev.txt
-
-      - name: Build Backend Executable
+      - name: Build C++ Backend
         run: |
-          pyinstaller --onefile --name microuter_backend \
-            --add-binary "$GITHUB_WORKSPACE/rnnoise_build/rnnoise.so:libs" \
-            --distpath dist_backend --workpath build_backend --specpath build_backend \
-            desktop/backend/backend.py
+          cd desktop/backend_cpp
+          mkdir build_cpp && cd build_cpp
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_MAKE_PROGRAM=ninja
+          cmake --build . --target microuter_backend -j "$(nproc)"
+          cp microuter_backend microuter_backend_cpp
 
       - name: Create Debian Package Structure
         run: |
-          mkdir -p deb_root/usr/bin
-          mkdir -p deb_root/usr/lib/microuter/backend
-          mkdir -p deb_root/DEBIAN
+          mkdir -p deb_root/usr/lib/microuter/backend deb_root/DEBIAN
 
-          # App binary and assets
           cp -r desktop/frontend/build/linux/x64/release/bundle/* deb_root/usr/lib/microuter/
+          cp desktop/backend_cpp/build_cpp/microuter_backend_cpp deb_root/usr/lib/microuter/backend/
+          chmod +x deb_root/usr/lib/microuter/backend/microuter_backend_cpp
+          cp rnnoise_build/librnnoise.so deb_root/usr/lib/microuter/backend/
 
-          # Launcher script
-          cat > deb_root/usr/bin/microuter <<EOF
+          mkdir -p deb_root/usr/bin deb_root/usr/share/applications
+          cat > deb_root/usr/bin/microuter <<'EOF'
           #!/bin/bash
           cd /usr/lib/microuter
-          ./microuter_pc "\$@"
+          ./microuter_pc "$@"
           EOF
           chmod +x deb_root/usr/bin/microuter
 
-          # Desktop Entry
-          mkdir -p deb_root/usr/share/applications
-          cat > deb_root/usr/share/applications/microuter.desktop <<EOF
+          cat > deb_root/usr/share/applications/microuter.desktop <<'EOF'
           [Desktop Entry]
           Name=MicRouter
           Comment=Use your Android phone as a microphone
@@ -332,11 +315,6 @@ jobs:
           Categories=AudioVideo;Audio;
           EOF
 
-          # Backend: self-contained executable, no system Python required
-          cp dist_backend/microuter_backend deb_root/usr/lib/microuter/backend/
-          chmod +x deb_root/usr/lib/microuter/backend/microuter_backend
-
-          # Control file
           cat > deb_root/DEBIAN/control <<EOF
           Package: microuter
           Version: $APP_VERSION
@@ -359,27 +337,22 @@ jobs:
 
       - name: Create AppImage Structure
         run: |
-          mkdir -p AppDir/usr/bin
-          mkdir -p AppDir/usr/lib/microuter/backend
+          mkdir -p AppDir/usr/bin AppDir/usr/lib/microuter/backend
 
-          # Copy Flutter app bundle
           cp -r desktop/frontend/build/linux/x64/release/bundle/* AppDir/usr/lib/microuter/
+          cp desktop/backend_cpp/build_cpp/microuter_backend_cpp AppDir/usr/lib/microuter/backend/
+          chmod +x AppDir/usr/lib/microuter/backend/microuter_backend_cpp
+          cp rnnoise_build/librnnoise.so AppDir/usr/lib/microuter/backend/
 
-          # Copy Backend executable
-          cp dist_backend/microuter_backend AppDir/usr/lib/microuter/backend/
-          chmod +x AppDir/usr/lib/microuter/backend/microuter_backend
-
-          # Create AppRun entrypoint script
-          cat > AppDir/AppRun <<EOF
+          cat > AppDir/AppRun <<'EOF'
           #!/bin/bash
-          HERE="\$(dirname "\$(readlink -f "\${0}")")"
-          cd "\${HERE}/usr/lib/microuter"
-          exec "./microuter_pc" "\$@"
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          cd "${HERE}/usr/lib/microuter"
+          exec "./microuter_pc" "$@"
           EOF
           chmod +x AppDir/AppRun
 
-          # Copy desktop entry file
-          cat > AppDir/microuter.desktop <<EOF
+          cat > AppDir/microuter.desktop <<'EOF'
           [Desktop Entry]
           Name=MicRouter
           Comment=Use your Android phone as a microphone
@@ -389,8 +362,6 @@ jobs:
           Type=Application
           Categories=AudioVideo;Audio;
           EOF
-
-          # Create a dummy icon file if needed, or link standard system icon name
           touch AppDir/audio-input-microphone.png
 
       - name: Build AppImage
