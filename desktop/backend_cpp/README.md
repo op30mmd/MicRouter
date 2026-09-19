@@ -52,7 +52,7 @@ cmake --build build -j
 
 ## Packaged release layout
 
-Bundled next to the Flutter executable (see `.github/workflows/release-cpp-*.yml`):
+Bundled next to the Flutter executable (see `.github/workflows/release.yml`):
 
 ```
 backend/

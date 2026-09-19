@@ -79,6 +79,35 @@ std::vector<AudioOutput::Device> AudioOutput::ListDevices() {
     outs.push_back(std::move(info));
   }
 
+#if defined(_WIN32)
+  // On Windows every endpoint is reported once per host API (MME,
+  // DirectSound, WASAPI, WDM-KS), and the names differ per API: MME truncates
+  // to 31 characters, WDM-KS uses its own wording, and MME/DirectSound add
+  // "Microsoft Sound Mapper" / "Primary Sound Driver" pseudo-devices. Merging
+  // by name therefore still shows each speaker three or four times. WASAPI
+  // enumerates the real endpoints exactly once with their full names, and it
+  // is the API we open anyway, so list only those when it is available.
+  if (target_api_index != -1) {
+    std::vector<Device> wasapi;
+    for (const PaInfo& info : outs) {
+      if (info.host_api != target_api_index) continue;
+      bool exists = false;
+      for (const auto& d : wasapi) {
+        if (d.name == info.name) {
+          exists = true;
+          break;
+        }
+      }
+      if (exists) continue;
+      Device d;
+      d.index = info.index;
+      d.name = info.name;
+      wasapi.push_back(std::move(d));
+    }
+    if (!wasapi.empty()) return wasapi;
+  }
+#endif
+
   // Prefer the low-latency host API device for a given name; otherwise keep
   // the first generic (MME/DirectSound/ALSA) device seen for that name.
   std::vector<Device> map;  // ordered mirror of backend.py's dict + keys()

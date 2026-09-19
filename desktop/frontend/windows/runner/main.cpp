@@ -18,6 +18,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");
+  // Render with Skia rather than Impeller. Flutter's Windows Impeller backend
+  // runs on OpenGL ES (via ANGLE) and is noticeably less smooth on older
+  // GPUs, which is exactly the hardware this app tends to live on.
+  project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
@@ -27,7 +31,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"microuter_pc", origin, size)) {
+  if (!window.Create(L"MicRouter PC", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

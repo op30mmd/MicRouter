@@ -17,10 +17,15 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  WindowOptions windowOptions = const WindowOptions(
+  const windowOptions = WindowOptions(
+    title: 'MicRouter PC',
     size: Size(800, 600),
+    // Below this the expanded pane plus a page no longer fit side by side.
+    minimumSize: Size(640, 480),
     center: true,
-    backgroundColor: Color(0x00000000),
+    // No backgroundColor: a transparent one makes window_manager apply a
+    // legacy "transparent gradient" accent policy on Windows, which fights
+    // the Mica system backdrop the Fluent shell requests from the runner.
     skipTaskbar: false,
     titleBarStyle: TitleBarStyle.normal,
   );

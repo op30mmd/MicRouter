@@ -270,12 +270,17 @@ class BackendController extends ChangeNotifier {
             // Re-resolve a saved selection against the deduped list so a
             // whitespace/case variant doesn't orphan the saved choice.
             final want = selectedDevice!.trim().toLowerCase();
+            String? match;
             for (final d in devices) {
               if (d.trim().toLowerCase() == want) {
-                selectedDevice = d;
+                match = d;
                 break;
               }
             }
+            // Gone for good (unplugged, or a pseudo-device from before the
+            // backend listed WASAPI endpoints only): fall back to the first
+            // endpoint rather than leaving nothing selected.
+            selectedDevice = match ?? devices.first;
           }
         }
         break;
